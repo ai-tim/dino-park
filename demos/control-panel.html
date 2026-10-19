@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Парк Динозавров — Управление миром</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #0b131e;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+        }
+        .panel-container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        h2 {
+            text-align: center;
+            color: #81C784;
+            margin-top: 0;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            background: #2E7D32;
+            color: white;
+            padding: 12px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #388E3C;
+        }
+        .btn-feed-meat { background: #C62828; }
+        .btn-feed-meat:hover { background: #D32F2F; }
+        .btn-feed-plant { background: #EF6C00; }
+        .btn-feed-plant:hover { background: #F57C00; }
+        select {
+            width: 100%;
+            padding: 10px;
+            background: #1e293b;
+            color: white;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="panel-container">
+        <h2>🎮 Управление Парком</h2>
+
+        <!-- Секция запуска динозавров -->
+        <div class="section">
+            <h3>Оживить динозавра</h3>
+            <button class="btn" onclick="openScanner()">📸 Сфотографировать раскраску</button>
+            <button class="btn" onclick="spawnPresetDino()">🦖 Запустить готового T-Rex</button>
+        </div>
+
+        <!-- Секция кормления (разделение по типам еды) -->
+        <div class="section">
+            <h3>Покормить обитателей</h3>
+            <button class="btn btn-feed-meat" onclick="feedDinos('meat')">🥩 Бросить мясо (для хищников)</button>
+            <button class="btn btn-feed-plant" onclick="feedDinos('plants')">🌿 Бросить папоротник (для травоядных)</button>
+        </div>
+
+        <!-- Секция смены фонов -->
+        <div class="section">
+            <h3>Доисторический пейзаж</h3>
+            <select id="bgSelect" onchange="changeBackground()">
+                <option value="volcanoes">🌋 Вулканическая долина</option>
+                <option value="jungle">🌴 Густые доисторические джунгли</option>
+                <option value="canyon">🏜️ Каменистый каньон</option>
+            </select>
+        </div>
+    </div>
+
+    <script>
+        function openScanner() {
+            alert('Переход к модулю сканирования раскраски (камера телефона).');
+        }
+
+        function spawnPresetDino() {
+            alert('Тираннозавр Рекс успешно добавлен в парк!');
+        }
+
+        function feedDinos(type) {
+            if (type === 'meat') {
+                alert('Хищники получили сочное мясо!');
+            } else {
+                alert('Травоядные с аппетитом уплетают папоротник!');
+            }
+        }
+
+        function changeBackground() {
+            const selectedBg = document.getElementById('bgSelect').value;
+            console.log('Изменен фон парка на:', selectedBg);
+        }
+    </script>
+</body>
+</html>
