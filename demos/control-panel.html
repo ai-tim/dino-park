@@ -4,48 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Парк Динозавров — Управление миром</title>
+    <link rel="stylesheet" href="../assets/ui.css">
     <style>
-        body {
-            margin: 0;
-            padding: 20px;
-            background-color: #0b131e;
-            color: #ffffff;
-            font-family: Arial, sans-serif;
-        }
-        .panel-container {
-            max-width: 500px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-        h2 {
-            text-align: center;
-            color: #81C784;
-            margin-top: 0;
-        }
-        .section {
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        .btn {
-            display: block;
-            width: 100%;
-            background: #2E7D32;
-            color: white;
-            padding: 12px;
-            font-size: 1rem;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            margin-bottom: 10px;
-            transition: background 0.3s;
-        }
-        .btn:hover {
-            background: #388E3C;
-        }
+        body { padding: 20px; }
+        .panel-container { max-width: 500px; margin: 0 auto; }
+        .section { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); }
         .btn-feed-meat { background: #C62828; }
         .btn-feed-meat:hover { background: #D32F2F; }
         .btn-feed-plant { background: #EF6C00; }
@@ -70,14 +33,14 @@
         <div class="section">
             <h3>Оживить динозавра</h3>
             <button class="btn" onclick="openScanner()">📸 Сфотографировать раскраску</button>
-            <button class="btn" onclick="spawnPresetDino()">🦖 Запустить готового T-Rex</button>
+            <button class="btn" onclick="spawnPresetDino()">🦖 Запустить случайного обитателя</button>
         </div>
 
         <!-- Секция кормления (разделение по типам еды) -->
         <div class="section">
             <h3>Покормить обитателей</h3>
-            <button class="btn btn-feed-meat" onclick="feedDinos('meat')">🥩 Бросить мясо (для хищников)</button>
-            <button class="btn btn-feed-plant" onclick="feedDinos('plants')">🌿 Бросить папоротник (для травоядных)</button>
+            <button class="btn btn-feed-meat" onclick="feedDinos('meat')">🥩 Бросить мясо (для Тираннозавра и Велоцираптора)</button>
+            <button class="btn btn-feed-plant" onclick="feedDinos('plants')">🌿 Бросить папоротник (для Трицератопса и Брахиозавра)</button>
         </div>
 
         <!-- Секция смены фонов -->
@@ -93,24 +56,24 @@
 
     <script>
         function openScanner() {
-            alert('Переход к модулю сканирования раскраски (камера телефона).');
+            alert('Переход к модулю сканирования раскраски динозавра.');
         }
 
         function spawnPresetDino() {
-            alert('Тираннозавр Рекс успешно добавлен в парк!');
+            alert('Новый динозавр успешно выпущен в доисторический мир!');
         }
 
         function feedDinos(type) {
             if (type === 'meat') {
-                alert('Хищники получили сочное мясо!');
+                alert('Хищники сбежались на запах мяса!');
             } else {
-                alert('Травоядные с аппетитом уплетают папоротник!');
+                alert('Травоядные с аппетитом принялись за сочные папоротники!');
             }
         }
 
         function changeBackground() {
             const selectedBg = document.getElementById('bgSelect').value;
-            console.log('Изменен фон парка на:', selectedBg);
+            console.log('Пейзаж парка изменен на:', selectedBg);
         }
     </script>
 </body>
