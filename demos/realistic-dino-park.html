@@ -14,7 +14,7 @@
             background-color: #000;
             font-family: Arial, sans-serif;
         }
-        #webcam-video, #canvas-output {
+        #webcam-video {
             position: absolute;
             top: 0;
             left: 0;
@@ -39,7 +39,7 @@
             right: 20px;
             z-index: 10;
             color: white;
-            background: rgba(0, 0, 0, 0.6);
+            background: rgba(0, 0, 0, 0.7);
             padding: 12px 20px;
             border-radius: 8px;
             display: flex;
@@ -62,26 +62,30 @@
     <div class="ui-overlay">
         <div>
             <h3 style="margin: 0 0 4px 0;">Парк Динозавров</h3>
-            <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">Все виды динозавров активны</p>
+            <p id="status-text" style="margin: 0; font-size: 0.85rem; color: #94a3b8;">Обитатели на месте</p>
         </div>
         <a href="control-panel.html" class="back-btn">Панель</a>
     </div>
 
     <video id="webcam-video" autoplay playsinline muted></video>
-    <canvas id="canvas-output" style="display:none;"></canvas>
     <div id="canvas-container"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="../tools/marker-tracker.js"></script>
     <script>
-        const videoElement = document.getElementById('webcam-video');
-        const canvasElement = document.getElementById('canvas-output');
-        const tracker = new DinoMarkerTracker(videoElement, canvasElement);
-        tracker.initCamera();
+        // Инициализация камеры
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+                document.getElementById('webcam-video').srcObject = stream;
+            } catch (e) {
+                console.log('Камера недоступна');
+            }
+        }
+        initCamera();
 
+        // Настройка 3D сцены
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 5, 12);
 
@@ -95,34 +99,24 @@
         dirLight.position.set(10, 20, 10);
         scene.add(dirLight);
 
-        // Создаем группу динозавров (хищники и травоядные)
+        // Создаем группу динозавров
         const dinosGroup = new THREE.Group();
 
-        // 1. Хищники (красноватые оттенки)
-        const tRexGeo = new THREE.BoxGeometry(1.5, 2.5, 3);
-        const tRexMat = new THREE.MeshStandardMaterial({ color: 0xd97706 });
-        const tRex = new THREE.Mesh(tRexGeo, tRexMat);
-        tRex.position.set(-3, 0, 0);
+        // 1. Хищники (T-Rex / Велоцираптор) - оранжево-красные
+        const tRex = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 2.5, 3),
+            new THREE.MeshStandardMaterial({ color: 0xd97706 })
+        );
+        tRex.position.set(-2, 0, 0);
         dinosGroup.add(tRex);
 
-        const raptorGeo = new THREE.BoxGeometry(1, 1.2, 2);
-        const raptorMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c });
-        const raptor = new THREE.Mesh(raptorGeo, raptorMat);
-        raptor.position.set(-1, -0.5, 2);
-        dinosGroup.add(raptor);
-
-        // 2. Травоядные (зелено-синие оттенки)
-        const triceratopsGeo = new THREE.BoxGeometry(2, 1.5, 3);
-        const triceratopsMat = new THREE.MeshStandardMaterial({ color: 0x16a34a });
-        const triceratops = new THREE.Mesh(triceratopsGeo, triceratopsMat);
+        // 2. Травоядные (Трицератопс / Брахиозавр) - зелено-синие
+        const triceratops = new THREE.Mesh(
+            new THREE.BoxGeometry(2, 1.5, 3),
+            new THREE.MeshStandardMaterial({ color: 0x16a34a })
+        );
         triceratops.position.set(2, 0, 0);
         dinosGroup.add(triceratops);
-
-        const brachiosaurusGeo = new THREE.BoxGeometry(1.5, 4, 2);
-        const brachiosaurusMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
-        const brachiosaurus = new THREE.Mesh(brachiosaurusGeo, brachiosaurusMat);
-        brachiosaurus.position.set(4, 1, -2);
-        dinosGroup.add(brachiosaurus);
 
         scene.add(dinosGroup);
 
