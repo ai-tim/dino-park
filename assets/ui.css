@@ -1,0 +1,52 @@
+/* Dino Park - Global UI Styles */
+:root {
+    --primary-color: #2E7D32;
+    --primary-hover: #388E3C;
+    --bg-dark: #050b14;
+    --panel-bg: rgba(255, 255, 255, 0.05);
+    --text-color: #ffffff;
+    --text-muted: #b0bec5;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-dark);
+    color: var(--text-color);
+    font-family: Arial, sans-serif;
+}
+
+.container, .panel-container {
+    max-width: 600px;
+    margin: 40px auto;
+    background: var(--panel-bg);
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    backdrop-filter: blur(8px);
+}
+
+h1, h2, h3 {
+    color: #81C784;
+}
+
+.btn {
+    display: inline-block;
+    width: 100%;
+    background: var(--primary-color);
+    color: var(--text-color);
+    padding: 12px 20px;
+    font-size: 1.1rem;
+    text-align: center;
+    text-decoration: none;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+    transition: background 0.3s;
+}
+
+.btn:hover {
+    background: var(--primary-hover);
+}
