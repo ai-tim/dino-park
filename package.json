@@ -1,1 +1,14 @@
-
+{
+  "name": "dino-park",
+  "version": "1.0.0",
+  "description": "Interactive paper dinosaur coloring and 3D park simulation",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "dependencies": {}
+}
