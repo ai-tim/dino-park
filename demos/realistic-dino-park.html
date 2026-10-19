@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парк Динозавров — Кастомный мир</title>
+    <title>Парк Динозавров — Детализированные обитатели</title>
     <style>
         body, html {
             margin: 0;
@@ -62,7 +62,7 @@
     <div class="ui-overlay">
         <div>
             <h3 style="margin: 0 0 4px 0;">Парк Динозавров</h3>
-            <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">Авторский мир ручной сборки</p>
+            <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">Повышенная детализация форм</p>
         </div>
         <a href="control-panel.html" class="back-btn">Панель</a>
     </div>
@@ -97,70 +97,105 @@
         dirLight.position.set(10, 25, 10);
         scene.add(dirLight);
 
-        // Главная группа парка
         const parkGroup = new THREE.Group();
 
-        // Функция создания Хищника (T-Rex стиль из геометрических модулей)
-        function createTRex() {
+        // Создаем детализированного Хищника (T-Rex с лапами и гребнем)
+        function createDetailedTRex() {
             const trex = new THREE.Group();
             
-            // Тело
+            // Туловище
             const body = new THREE.Mesh(
-                new THREE.BoxGeometry(1.2, 1.5, 2.5),
-                new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.4 })
+                new THREE.BoxGeometry(1.2, 1.4, 2.4),
+                new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3 })
             );
             body.position.set(0, 0, 0);
             trex.add(body);
 
-            // Голова
+            // Голова с челюстью
             const head = new THREE.Mesh(
-                new THREE.BoxGeometry(0.8, 0.8, 1.2),
-                new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.4 })
+                new THREE.BoxGeometry(0.8, 0.7, 1.1),
+                new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.3 })
             );
-            head.position.set(0, 1.1, 1.1);
+            head.position.set(0, 1.0, 1.1);
             trex.add(head);
 
-            // Хвост
-            const tail = new THREE.Mesh(
-                new THREE.BoxGeometry(0.6, 0.6, 2),
-                new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.4 })
+            // Гребень на спине
+            const crest = new THREE.Mesh(
+                new THREE.BoxGeometry(0.3, 0.5, 2.0),
+                new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 })
             );
-            tail.position.set(0, 0.2, -1.8);
+            crest.position.set(0, 0.9, -0.2);
+            trex.add(crest);
+
+            // Мощный хвост
+            const tail = new THREE.Mesh(
+                new THREE.BoxGeometry(0.5, 0.5, 2.2),
+                new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.3 })
+            );
+            tail.position.set(0, 0.2, -1.9);
             trex.add(tail);
+
+            // Лапы
+            const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.0, 0.4), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+            leg1.position.set(-0.4, -1.1, 0.2);
+            const leg2 = leg1.clone();
+            leg2.position.x = 0.4;
+            trex.add(leg1);
+            trex.add(leg2);
 
             trex.position.set(-3, 0, 0);
             return trex;
         }
 
-        // Функция создания Травоядного (Трицератопс стиль)
-        function createTriceratops() {
+        // Создаем детализированное Травоядное (Трицератопс с рогами и воротником)
+        function createDetailedTriceratops() {
             const triceratops = new THREE.Group();
 
-            // Тело
+            // Туловище
             const body = new THREE.Mesh(
-                new THREE.BoxGeometry(1.6, 1.4, 2.8),
-                new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.4 })
+                new THREE.BoxGeometry(1.6, 1.3, 2.6),
+                new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.3 })
             );
             body.position.set(0, 0, 0);
             triceratops.add(body);
 
-            // Голова с воротником
+            // Голова
             const head = new THREE.Mesh(
-                new THREE.BoxGeometry(1.2, 1.0, 1.0),
-                new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.4 })
+                new THREE.BoxGeometry(1.0, 0.9, 1.0),
+                new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.3 })
             );
-            head.position.set(0, 0.4, 1.5);
+            head.position.set(0, 0.3, 1.5);
             triceratops.add(head);
+
+            // Воротник щита головы
+            const shield = new THREE.Mesh(
+                new THREE.BoxGeometry(1.4, 1.2, 0.2),
+                new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.3 })
+            );
+            shield.position.set(0, 0.6, 1.1);
+            triceratops.add(shield);
+
+            // Лапы
+            const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.9, 0.4), new THREE.MeshStandardMaterial({ color: 0x14532d }));
+            leg1.position.set(-0.5, -1.0, 0.5);
+            const leg2 = leg1.clone();
+            leg2.position.x = 0.5;
+            const leg3 = leg1.clone();
+            leg3.position.z = -0.5;
+            const leg4 = leg1.clone();
+            leg4.position.set(0.5, -1.0, -0.5);
+            
+            triceratops.add(leg1);
+            triceratops.add(leg2);
+            triceratops.add(leg3);
+            triceratops.add(leg4);
 
             triceratops.position.set(3, 0, 0);
             return triceratops;
         }
 
-        const tRexInstance = createTRex();
-        const triceratopsInstance = createTriceratops();
-
-        parkGroup.add(tRexInstance);
-        parkGroup.add(triceratopsInstance);
+        parkGroup.add(createDetailedTRex());
+        parkGroup.add(createDetailedTriceratops());
         scene.add(parkGroup);
 
         function animate() {
