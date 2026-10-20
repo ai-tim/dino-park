@@ -3,78 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парк Динозавров — Управление миром</title>
-    <link rel="stylesheet" href="../assets/ui.css">
+    <title>Панель управления — Парк Динозавров</title>
     <style>
-        body { padding: 20px; }
-        .panel-container { max-width: 500px; margin: 0 auto; }
-        .section { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .btn-feed-meat { background: #C62828; }
-        .btn-feed-meat:hover { background: #D32F2F; }
-        .btn-feed-plant { background: #EF6C00; }
-        .btn-feed-plant:hover { background: #F57C00; }
-        select {
-            width: 100%;
-            padding: 10px;
-            background: #1e293b;
-            color: white;
-            border: 1px solid #475569;
-            border-radius: 6px;
-            font-size: 1rem;
-            margin-bottom: 10px;
+        * { box-sizing: border-box; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at 50% 15%, #1e1b4b 0%, #090d16 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: white; display: flex; justify-content: center; align-items: center;
         }
+        .panel-container {
+            text-align: center; background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            padding: 36px 28px; border-radius: 28px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+            max-width: 400px; width: 90%; border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .panel-emblem { font-size: 3rem; margin-bottom: 10px; }
+        h1 {
+            margin: 0 0 10px 0; font-size: 1.7rem; font-weight: 800;
+            background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        p { margin: 0 0 24px 0; color: #94a3b8; font-size: 0.92rem; line-height: 1.5; }
+        .control-btn {
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            width: 100%; background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white; border: none; padding: 15px; border-radius: 14px;
+            font-size: 1rem; font-weight: 700; cursor: pointer; text-decoration: none;
+            margin-bottom: 14px; box-shadow: 0 8px 20px rgba(239, 68, 68, 0.35);
+            transition: transform 0.1s ease;
+        }
+        .control-btn:active { transform: scale(0.97); }
+        .control-btn.tv { background: linear-gradient(135deg, #7c3aed, #6d28d9); box-shadow: 0 8px 20px rgba(124, 58, 237, 0.35); }
+        .control-btn.secondary { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: none; }
+        .footer-info { margin-top: 16px; font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; }
     </style>
 </head>
 <body>
     <div class="panel-container">
-        <h2>🎮 Управление Парком</h2>
-
-        <!-- Секция запуска динозавров -->
-        <div class="section">
-            <h3>Оживить динозавра</h3>
-            <button class="btn" onclick="openScanner()">📸 Сфотографировать раскраску</button>
-            <button class="btn" onclick="spawnPresetDino()">🦖 Запустить случайного обитателя</button>
-        </div>
-
-        <!-- Секция кормления (разделение по типам еды) -->
-        <div class="section">
-            <h3>Покормить обитателей</h3>
-            <button class="btn btn-feed-meat" onclick="feedDinos('meat')">🥩 Бросить мясо (для Тираннозавра и Велоцираптора)</button>
-            <button class="btn btn-feed-plant" onclick="feedDinos('plants')">🌿 Бросить папоротник (для Трицератопса и Брахиозавра)</button>
-        </div>
-
-        <!-- Секция смены фонов -->
-        <div class="section">
-            <h3>Доисторический пейзаж</h3>
-            <select id="bgSelect" onchange="changeBackground()">
-                <option value="volcanoes">🌋 Вулканическая долина</option>
-                <option value="jungle">🌴 Густые доисторические джунгли</option>
-                <option value="canyon">🏜️ Каменистый каньон</option>
-            </select>
-        </div>
+        <div class="panel-emblem">⚙️</div>
+        <h1>Панель управления</h1>
+        <p>Управляйте режимами отображения парка и трансляцией на большой экран.</p>
+        
+        <a href="./realistic-dino-park.html" class="control-btn"><span>🦖</span> Обычный режим парка</a>
+        <a href="./realistic-dino-park.html?tv=1" class="control-btn tv"><span>📺</span> Режим ТВ (без интерфейса)</a>
+        <a href="../index.html" class="control-btn secondary"><span>🏠</span> На главную</a>
+        
+        <div class="footer-info">Центр управления экосистемой</div>
     </div>
-
-    <script>
-        function openScanner() {
-            alert('Функция сканирования через камеру телефона активирована. Наведите камеру на раскраску с черными углами!');
-        }
-
-        function spawnPresetDino() {
-            alert('Новый динозавр успешно выпущен в доисторический мир!');
-        }
-
-        function feedDinos(type) {
-            if (type === 'meat') {
-                alert('Хищники сбежались на запах мяса!');
-            } else {
-                alert('Травоядные с аппетитом принялись за сочные папоротники!');
-            }
-        }
-
-        function changeBackground() {
-            const selectedBg = document.getElementById('bgSelect').value;
-            console.log('Пейзаж парка изменен на:', selectedBg);
-        }
-    </script>
 </body>
 </html>
