@@ -5,81 +5,57 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Парк Динозавров — Главное меню</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: radial-gradient(circle at 50% 20%, #1e1b4b 0%, #090d16 100%);
-            color: white;
+        * { box-sizing: border-box; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+            background: radial-gradient(circle at 50% 15%, #1e1b4b 0%, #090d16 100%);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            color: white; display: flex; justify-content: center; align-items: center;
         }
-        .container {
-            text-align: center;
-            background: rgba(15, 23, 42, 0.85);
-            padding: 32px;
-            border-radius: 24px;
-            max-width: 380px;
-            width: 90%;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            border: 1px solid rgba(255,255,255,0.12);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+        .preview-container {
+            text-align: center; background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            padding: 36px 28px; border-radius: 28px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+            max-width: 380px; width: 90%; border: 1px solid rgba(255, 255, 255, 0.1);
         }
+        .dino-emblem { font-size: 3.5rem; margin-bottom: 12px; filter: drop-shadow(0 6px 12px rgba(34, 197, 94, 0.4)); }
         h1 {
-            color: #4ade80;
-            font-size: 1.85rem;
-            margin-bottom: 10px;
+            margin: 0 0 12px 0; font-size: 1.9rem; font-weight: 800;
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
-        p {
-            color: #94a3b8;
-            font-size: 0.92rem;
-            margin-bottom: 24px;
-            line-height: 1.5;
-        }
-        .btn {
-            display: block;
-            width: 100%;
-            background: linear-gradient(135deg, #16a34a, #15803d);
-            color: white;
-            padding: 14px;
-            border-radius: 12px;
-            text-decoration: none;
-            font-weight: bold;
-            margin-bottom: 12px;
-            box-sizing: border-box;
-            box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
+        p { margin: 0 0 28px 0; color: #94a3b8; font-size: 0.94rem; line-height: 1.55; }
+        .menu-btn {
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            width: 100%; background: linear-gradient(135deg, #16a34a, #15803d);
+            color: white; border: none; padding: 15px; border-radius: 14px;
+            font-size: 1rem; font-weight: 700; cursor: pointer; text-decoration: none;
+            margin-bottom: 14px; box-shadow: 0 8px 20px rgba(22, 163, 74, 0.35);
             transition: transform 0.1s ease;
         }
-        .btn:active {
-            transform: scale(0.97);
-        }
-        .btn.coloring {
-            background: linear-gradient(135deg, #2563eb, #1d4ed8);
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-        }
-        .btn.secondary {
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: none;
-        }
+        .menu-btn:active { transform: scale(0.97); }
+        .menu-btn.coloring { background: linear-gradient(135deg, #2563eb, #1d4ed8); box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35); }
+        .menu-btn.secondary { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: none; }
+        .footer-info { margin-top: 20px; font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🦖 Парк Динозавров</h1>
+    <div class="preview-container">
+        <div class="dino-emblem">🦖</div>
+        <h1>Парк Динозавров</h1>
         <p>Раскрась рисунок на листе, сфотографируй телефоном — и доисторический мир оживет в 3D!</p>
         
-        <!-- Кнопка открытия 3D парка -->
-        <a href="./demos/realistic-dino-park.html" class="btn">🚀 Открыть парк в 3D</a>
+        <!-- Кнопка перехода в 3D парк -->
+        <a href="./demos/realistic-dino-park.html" class="menu-btn"><span>🚀</span> Открыть парк в 3D</a>
         
-        <!-- Синяя кнопка сканирования / скачивания раскраски -->
-        <a href="#" class="btn coloring" onclick="alert('Модуль сканирования и шаблонов раскрасок T-Rex'); return false;">🎨 Сканировать / Раскраска</a>
+        <!-- Синяя кнопка сканирования раскраски -->
+        <a href="./demos/scanner.html" class="menu-btn coloring"><span>🎨</span> Сканировать / Раскраска</a>
         
         <!-- Панель управления -->
-        <a href="./demos/control-panel.html" class="btn secondary">⚙️ Панель управления</a>
+        <a href="./demos/control-panel.html" class="menu-btn secondary"><span>⚙️</span> Панель управления</a>
+        
+        <div class="footer-info">Интерактивный мир на GitHub Pages</div>
     </div>
 </body>
 </html>
