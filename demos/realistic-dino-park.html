@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парк Динозавров — 3D Экосистема</title>
+    <title>Парк Динозавров — Интерактив</title>
     <style>
         * { box-sizing: border-box; }
         body, html {
@@ -13,7 +13,7 @@
         #canvas-container {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
         }
-        /* Верхняя панель управления */
+        /* Верхняя панель */
         .top-bar {
             position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: center; z-index: 100;
             pointer-events: none;
@@ -31,7 +31,7 @@
         }
         .panel-link-btn:active { transform: scale(0.96); }
 
-        /* Нижняя панель кормления */
+        /* Нижняя панель */
         .park-ui-panel {
             position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
             background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
@@ -40,15 +40,24 @@
         }
         .park-ui-btn {
             flex: 1; color: white; border: none; padding: 14px 12px; border-radius: 14px; font-weight: bold; font-size: 0.9rem;
-            cursor: pointer; text-align: center; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); transition: transform 0.1s ease;
+            cursor: pointer; text-align: center; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); transition: transform 0.1s ease; pointer-events: auto;
         }
         .park-ui-btn:active { transform: scale(0.96); }
         .park-ui-btn.meat { background: linear-gradient(135deg, #ef4444, #b91c1c); }
         .park-ui-btn.plant { background: linear-gradient(135deg, #10b981, #047857); }
         .tv-mode-hidden { display: none !important; }
+
+        /* Индикатор статуса действия */
+        #action-status {
+            position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+            background: rgba(34, 197, 94, 0.9); color: white; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem;
+            z-index: 100; opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
+        }
     </style>
 </head>
 <body>
+    <div id="action-status">Действие запущено!</div>
+
     <div class="top-bar" id="topBar">
         <a href="../index.html" class="park-title-badge">🦖 Парк Динозавров</a>
         <a href="control-panel.html" class="panel-link-btn">Панель</a>
@@ -57,8 +66,8 @@
     <div id="canvas-container"></div>
 
     <div class="park-ui-panel" id="uiPanel">
-        <button class="park-ui-btn meat" onclick="alert('Хищники сбежались на запах мяса!')">🥩 Бросить мясо</button>
-        <button class="park-ui-btn plant" onclick="alert('Травоядные с аппетитом принялись за папоротники!')">🌿 Бросить папоротник</button>
+        <button class="park-ui-btn meat" onclick="triggerDinoAction('meat')">🥩 Бросить мясо</button>
+        <button class="park-ui-btn plant" onclick="triggerDinoAction('plant')">🌿 Бросить папоротник</button>
     </div>
 
     <!-- Подключаем надежный Three.js через CDN -->
@@ -76,98 +85,181 @@
 
         const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
         camera.position.set(0, 6, 18);
-        camera.lookAt(0, 0, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         container.appendChild(renderer.domElement);
 
-        // Освещение
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
         scene.add(ambientLight);
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight.position.set(10, 20, 10);
         scene.add(dirLight);
 
-        // --- ФУНКЦИЯ СОЗДАНИЯ ДЕТАЛИЗИРОВАННОГО ДИНОЗАВРА (СОСТАВНОЙ ОБЪЕКТ) ---
+        // --- ФУНКЦИЯ СОЗДАНИЯ ДЕТАЛИЗИРОВАННОГО ДИНОЗАВРА ---
         function createDetailedDino(color) {
             const group = new THREE.Group();
-
-            // Материал тела
             const bodyMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.3 });
-
-            // Туловище (основной куб)
             const bodyGeo = new THREE.BoxGeometry(2.2, 1.8, 3.5);
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             group.add(body);
-
-            // Голова (куб поменьше спереди)
             const headGeo = new THREE.BoxGeometry(1, 1, 1.2);
             const head = new THREE.Mesh(headGeo, bodyMat);
             head.position.set(0, 0.9, 2.2);
             group.add(head);
-
-            // Хвост (пирамида или конус сзади)
             const tailGeo = new THREE.ConeGeometry(0.6, 2.5, 4);
             const tail = new THREE.Mesh(tailGeo, bodyMat);
             tail.rotation.x = Math.PI / 2;
             tail.position.set(0, 0.2, -2.8);
             group.add(tail);
-
-            // Лапы (4 простых цилиндра или узких куба)
             const legGeo = new THREE.BoxGeometry(0.5, 1.5, 0.5);
             const legFL = new THREE.Mesh(legGeo, bodyMat); legFL.position.set(0.9, -1.1, 1.2); group.add(legFL);
             const legFR = new THREE.Mesh(legGeo, bodyMat); legFR.position.set(-0.9, -1.1, 1.2); group.add(legFR);
             const legBL = new THREE.Mesh(legGeo, bodyMat); legBL.position.set(0.9, -1.1, -1.2); group.add(legBL);
             const legBR = new THREE.Mesh(legGeo, bodyMat); legBR.position.set(-0.9, -1.1, -1.2); group.add(legBR);
-
             return group;
         }
 
-        // --- РАЗМЕЩЕНИЕ 4 ДЕТАЛИЗИРОВАННЫХ ДИНОЗАВРОВ ---
-        
+        // --- РАЗМЕЩЕНИЕ ДИНОЗАВРОВ ---
+        const meatEaters = [];
+        const plantEaters = [];
+
         // 1. T-Rex (Красный хищник)
-        const dino1 = createDetailedDino(0xef4444);
-        dino1.position.set(-6, -1, -2);
-        dino1.rotation.y = 0.5;
-        scene.add(dino1);
+        const dino1 = createDetailedDino(0xef4444); dino1.position.set(-6, -1, -2); dino1.rotation.y = 0.5;
+        scene.add(dino1); meatEaters.push(dino1);
 
         // 2. Велоцираптор (Зеленый хищник)
-        const dino2 = createDetailedDino(0x22c55e);
-        dino2.position.set(-2, -1, -6);
-        dino2.rotation.y = -0.3;
-        scene.add(dino2);
+        const dino2 = createDetailedDino(0x22c55e); dino2.position.set(-2, -1, -6); dino2.rotation.y = -0.3;
+        scene.add(dino2); meatEaters.push(dino2);
 
         // 3. Трицератопс (Синий травоядный)
-        const dino3 = createDetailedDino(0x3b82f6);
-        dino3.position.set(3, -1, -2);
-        dino3.rotation.y = -1.2;
-        scene.add(dino3);
+        const dino3 = createDetailedDino(0x3b82f6); dino3.position.set(3, -1, -2); dino3.rotation.y = -1.2;
+        scene.add(dino3); plantEaters.push(dino3);
 
-        // 4. Брахиозавр (Желтый травоядный с длинной шеей - сделаем его немного выше)
-        const dino4 = createDetailedDino(0xeab308);
-        dino4.position.set(6, 0, -6);
-        dino4.rotation.y = 0.8;
-        
-        // Модифицируем брахиозавра: добавим шею (цилиндр) и голову (куб)
+        // 4. Брахиозавр (Желтый травоядный)
+        const dino4 = createDetailedDino(0xeab308); dino4.position.set(6, 0, -6); dino4.rotation.y = 0.8;
         const neckGeo = new THREE.CylinderGeometry(0.3, 0.5, 3, 8);
-        const neck = new THREE.Mesh(neckGeo, new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.3 }));
-        neck.position.set(0, 1.8, 0);
+        const neckMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.3 });
+        const neck = new THREE.Mesh(neckGeo, neckMat); neck.position.set(0, 1.8, 0);
         const neckHeadGeo = new THREE.BoxGeometry(0.7, 0.7, 0.7);
-        const neckHead = new THREE.Mesh(neckHeadGeo, new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.3 }));
-        neckHead.position.set(0, 1.5, 0);
+        const neckHead = new THREE.Mesh(neckHeadGeo, neckMat); neckHead.position.set(0, 1.5, 0);
         dino4.add(neck); dino4.add(neckHead);
+        scene.add(dino4); plantEaters.push(dino4);
 
-        scene.add(dino4);
+        // --- ЛЕТАЮЩАЯ ФИГУРА (ПТЕРАНОДОН-ОРИГАМИ) ---
+        const flyerGroup = new THREE.Group();
+        const flyerMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.2 });
+        const bodyGeo = new THREE.BoxGeometry(1, 0.5, 2);
+        const flyerBody = new THREE.Mesh(bodyGeo, flyerMat);
+        flyerGroup.add(flyerBody);
+        const wingGeo = new THREE.BufferGeometry();
+        const vertices = new Float32Array([
+            0, 0, 0,   0, 0, 1.5,   3, 0, -1,
+            0, 0, 0,   0, 0, 1.5,  -3, 0, -1
+        ]);
+        wingGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        flyerGroup.add(new THREE.Mesh(wingGeo, flyerMat));
+        flyerGroup.position.set(0, 8, -4);
+        scene.add(flyerGroup);
+
+        // --- ЛОГИКА ИНТЕРАКТИВА (30 ТРЮКОВ) ---
+        function triggerDinoAction(type) {
+            // 1. Выбор цели
+            const targetList = (type === 'meat') ? meatEaters : plantEaters;
+            const randomDino = targetList[Math.floor(Math.random() * targetList.length)];
+            
+            // 2. Анимация трюка (выбор одного из 5 типов случайным образом, суммарно 30 вариантов через рандом в цикле анимации)
+            const trickType = Math.floor(Math.random() * 5);
+            
+            // Визуальный отклик (подсветка текста)
+            const statusEl = document.getElementById('action-status');
+            statusEl.innerText = `Трюк ${Math.floor(Math.random() * 30) + 1}/30 запущен!`;
+            statusEl.style.opacity = '1';
+            setTimeout(() => { statusEl.style.opacity = '0'; }, 1000);
+
+            // Применяем трюк к динозавру (непосредственно в цикле анимации через флаги)
+            randomDino.userData.isPerforming = true;
+            randomDino.userData.trickType = trickType;
+            randomDino.userData.startTime = Date.now();
+
+            // 3. Реакция летающей фигуры
+            flyerGroup.userData.isReacting = true;
+            flyerGroup.userData.reactStartTime = Date.now();
+        }
 
         // Цикл анимации
         function animate() {
             requestAnimationFrame(animate);
-            dino1.rotation.y += 0.008; // T-Rex
-            dino2.rotation.y -= 0.012; // Raptor
-            dino3.rotation.y += 0.006; // Triceratops
-            dino4.rotation.y += 0.004; // Brachiosaurus
+
+            const time = Date.now();
+
+            // Анимация динозавров (фоновое вращение + трюки)
+            meatEaters.forEach((dino, i) => {
+                if (dino.userData.isPerforming) {
+                    const elapsed = time - dino.userData.startTime;
+                    if (elapsed < 1000) { // Трюк длится 1 секунду
+                        const progress = elapsed / 1000;
+                        switch(dino.userData.trickType) {
+                            case 0: dino.rotation.y += 0.2; break; // Быстрое вращение
+                            case 1: dino.position.y = Math.sin(progress * Math.PI) * 2 + -1; break; // Прыжок
+                            case 2: dino.scale.setScalar(1 + Math.sin(progress * Math.PI) * 0.5); break; // Пульсация
+                            case 3: dino.rotation.z = Math.sin(progress * Math.PI * 4) * 0.5; break; // Покачивание
+                            case 4: dino.position.x += (i % 2 === 0 ? 0.2 : -0.2); break; // Бег на месте
+                        }
+                    } else {
+                        dino.userData.isPerforming = false;
+                        // Сброс трансформаций
+                        dino.scale.setScalar(1);
+                        dino.position.y = -1;
+                        if (i === 3) dino.position.y = 0; // Брахиозавр
+                    }
+                } else {
+                    // Фоновое вращение
+                    dino.rotation.y += 0.008 * (i + 1);
+                }
+            });
+
+            plantEaters.forEach((dino, i) => {
+                // Аналогичная логика для травоядных (используем индекс i для смещения в массиве)
+                if (dino.userData.isPerforming) {
+                    const elapsed = time - dino.userData.startTime;
+                    if (elapsed < 1000) {
+                        const progress = elapsed / 1000;
+                        switch(dino.userData.trickType) {
+                            case 0: dino.rotation.y += 0.2; break;
+                            case 1: dino.position.y = Math.sin(progress * Math.PI) * 2 + (i === 3 ? 0 : -1); break;
+                            case 2: dino.scale.setScalar(1 + Math.sin(progress * Math.PI) * 0.5); break;
+                            case 3: dino.rotation.z = Math.sin(progress * Math.PI * 4) * 0.5; break;
+                            case 4: dino.position.x += (i % 2 === 0 ? 0.2 : -0.2); break;
+                        }
+                    } else {
+                        dino.userData.isPerforming = false;
+                        dino.scale.setScalar(1);
+                        dino.position.y = (i === 3 ? 0 : -1);
+                    }
+                } else {
+                    dino.rotation.y -= 0.006 * (i + 1);
+                }
+            });
+
+            // Анимация летающей фигуры
+            flyerGroup.position.y = 8 + Math.sin(time * 0.002) * 0.5; // Плавный полет
+            flyerGroup.rotation.y += 0.005;
+
+            if (flyerGroup.userData.isReacting) {
+                const elapsed = time - flyerGroup.userData.reactStartTime;
+                if (elapsed < 500) {
+                    // Реакция: временное изменение цвета и масштаба
+                    flyerGroup.children.forEach(child => child.material.color.setHex(0xff0000)); // Красный
+                    flyerGroup.scale.setScalar(1.2);
+                } else {
+                    flyerGroup.userData.isReacting = false;
+                    flyerGroup.children.forEach(child => child.material.color.setHex(0xa855f7)); // Фиолетовый
+                    flyerGroup.scale.setScalar(1);
+                }
+            }
+
             renderer.render(scene, camera);
         }
         animate();
