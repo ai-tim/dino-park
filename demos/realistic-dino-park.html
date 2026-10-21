@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парк Динозавров — 3D Экосистема с уникальным рыком</title>
+    <title>Парк Динозавров — 3D Экосистема с органическим рыком</title>
     <style>
         * { box-sizing: border-box; }
         body, html {
@@ -51,7 +51,7 @@
     </style>
 </head>
 <body>
-    <div id="action-status">Парк активен: Уникальный рык!</div>
+    <div id="action-status">Парк активен: Органический рев!</div>
 
     <div class="top-bar" id="topBar">
         <a href="../index.html" class="park-title-badge">🦖 Парк Динозавров</a>
@@ -73,9 +73,21 @@
             document.getElementById('uiPanel').classList.add('tv-mode-hidden');
         }
 
-        // Продвинутый синтезатор с шумом дыхания и 5 уникальными профилями рыка
+        // Создание кривой искажения (дисторшн для хрипоты гортани)
+        function makeDistortionCurve(amount) {
+            const k = typeof amount === 'number' ? amount : 50;
+            const n_samples = 44100;
+            const curve = new Float32Array(n_samples);
+            const deg = Math.PI / 180;
+            for (let i = 0; i < n_samples; ++i) {
+                const x = (i * 2) / n_samples - 1;
+                curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+            }
+            return curve;
+        }
+
         let audioCtx = null;
-        function playUniqueDinoRoar(dinoIndex) {
+        function playOrganicDinoRoar(dinoIndex) {
             try {
                 if (!audioCtx) {
                     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -86,94 +98,75 @@
 
                 const t = audioCtx.currentTime;
                 
-                // Создаем шумовой буфер для имитации хрипоты и дыхания хищника
-                const bufferSize = audioCtx.sampleRate * 1.5;
-                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-                const data = buffer.getChannelData(0);
-                for (let i = 0; i < bufferSize; i++) {
-                    data[i] = Math.random() * 2 - 1;
-                }
-
-                const noise = audioCtx.createBufferSource();
-                noise.buffer = buffer;
-
+                // Два осциллятора для плотного многослойного тембра гортани
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
                 const filter = audioCtx.createBiquadFilter();
-                filter.type = 'bandpass';
+                const distortion = audioCtx.createWaveShaper();
+                
+                distortion.curve = makeDistortionCurve(35);
+                filter.type = 'lowpass';
 
-                const osc = audioCtx.createOscillator();
-                const gainNode = audioCtx.createGain();
+                let baseFreq = 90;
+                let duration = 1.3;
 
-                // 5 уникальных профилей рычания под каждого динозавра
+                // 5 уникальных биологических профилей рыка
                 switch(dinoIndex) {
-                    case 0: // T-Rex (Красный) — Мощный, низкий, грозный бас
-                        osc.type = 'sawtooth';
-                        osc.frequency.setValueAtTime(120, t);
-                        osc.frequency.exponentialRampToValueAtTime(35, t + 1.3);
-                        filter.frequency.setValueAtTime(350, t);
-                        filter.frequency.linearRampToValueAtTime(100, t + 1.3);
-                        filter.Q.value = 4;
-                        gainNode.gain.setValueAtTime(0.01, t);
-                        gainNode.gain.linearRampToValueAtTime(0.5, t + 0.2);
-                        gainNode.gain.exponentialRampToValueAtTime(0.001, t + 1.3);
+                    case 0: // T-Rex (Красный) — Мощный низкий утробный рык
+                        osc1.type = 'sawtooth'; osc2.type = 'triangle'; baseFreq = 80; duration = 1.5;
                         break;
-                    case 1: // Раптор (Зеленый) — Быстрый, резкий, пронзительный рык
-                        osc.type = 'square';
-                        osc.frequency.setValueAtTime(200, t);
-                        osc.frequency.exponentialRampToValueAtTime(80, t + 0.8);
-                        filter.frequency.setValueAtTime(600, t);
-                        filter.frequency.linearRampToValueAtTime(200, t + 0.8);
-                        filter.Q.value = 6;
-                        gainNode.gain.setValueAtTime(0.01, t);
-                        gainNode.gain.linearRampToValueAtTime(0.4, t + 0.1);
-                        gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+                    case 1: // Раптор (Зеленый) — Пронзительный скалящийся визг-рык
+                        osc1.type = 'square'; osc2.type = 'sawtooth'; baseFreq = 130; duration = 0.9;
                         break;
-                    case 2: // Травоядный (Синий) — Глубокий резонирующий гул
-                        osc.type = 'triangle';
-                        osc.frequency.setValueAtTime(90, t);
-                        osc.frequency.exponentialRampToValueAtTime(45, t + 1.0);
-                        filter.frequency.setValueAtTime(250, t);
-                        filter.frequency.linearRampToValueAtTime(80, t + 1.0);
-                        filter.Q.value = 2;
-                        gainNode.gain.setValueAtTime(0.01, t);
-                        gainNode.gain.linearRampToValueAtTime(0.4, t + 0.15);
-                        gainNode.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
+                    case 2: // Травоядный (Синий) — Глубокий басовый гул
+                        osc1.type = 'triangle'; osc2.type = 'sine'; baseFreq = 100; duration = 1.1;
                         break;
-                    case 3: // Длинношеий (Желтый) — Раскатистый трубный бас
-                        osc.type = 'sawtooth';
-                        osc.frequency.setValueAtTime(80, t);
-                        osc.frequency.exponentialRampToValueAtTime(28, t + 1.4);
-                        filter.frequency.setValueAtTime(180, t);
-                        filter.frequency.linearRampToValueAtTime(70, t + 1.4);
-                        filter.Q.value = 3;
-                        gainNode.gain.setValueAtTime(0.01, t);
-                        gainNode.gain.linearRampToValueAtTime(0.55, t + 0.25);
-                        gainNode.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+                    case 3: // Длинношеий (Желтый) — Раскатистый трубный рев
+                        osc1.type = 'sawtooth'; osc2.type = 'sine'; baseFreq = 60; duration = 1.6;
                         break;
-                    case 4: // Пятое существо / Кастомный — Уникальный гибридный рык
+                    case 4: // Пятое существо / Кастомный — Свирепый гибридный рык
                     default:
-                        osc.type = 'sawtooth';
-                        osc.frequency.setValueAtTime(150, t);
-                        osc.frequency.exponentialRampToValueAtTime(50, t + 1.1);
-                        filter.frequency.setValueAtTime(450, t);
-                        filter.frequency.linearRampToValueAtTime(130, t + 1.1);
-                        filter.Q.value = 4;
-                        gainNode.gain.setValueAtTime(0.01, t);
-                        gainNode.gain.linearRampToValueAtTime(0.45, t + 0.15);
-                        gainNode.gain.exponentialRampToValueAtTime(0.001, t + 1.1);
+                        osc1.type = 'sawtooth'; osc2.type = 'square'; baseFreq = 95; duration = 1.25;
                         break;
                 }
 
-                noise.connect(filter);
-                osc.connect(filter);
-                filter.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
+                // Голосовые колебания гортани (волнообразный контур вместо свиста)
+                osc1.frequency.setValueAtTime(baseFreq * 1.2, t);
+                osc1.frequency.linearRampToValueAtTime(baseFreq * 0.9, t + 0.3);
+                osc1.frequency.linearRampToValueAtTime(baseFreq * 1.1, t + 0.7);
+                osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.35, t + duration);
 
-                noise.start(t);
-                osc.start(t);
-                noise.stop(t + 1.4);
-                osc.stop(t + 1.4);
+                osc2.frequency.setValueAtTime(baseFreq * 0.6, t);
+                osc2.frequency.exponentialRampToValueAtTime(baseFreq * 0.18, t + duration);
+
+                // Фильтр открывающейся пасти
+                filter.frequency.setValueAtTime(300, t);
+                filter.frequency.linearRampToValueAtTime(750, t + 0.25);
+                filter.frequency.linearRampToValueAtTime(400, t + 0.6);
+                filter.frequency.exponentialRampToValueAtTime(120, t + duration);
+                filter.Q.value = 4;
+
+                // Плавная огибающая громкости с дыхательными импульсами
+                gain.gain.setValueAtTime(0.01, t);
+                gain.gain.linearRampToValueAtTime(0.45, t + 0.2);
+                gain.gain.setValueAtTime(0.3, t + 0.5);
+                gain.gain.linearRampToValueAtTime(0.4, t + 0.8);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+                // Соединение цепочки эффектов
+                osc1.connect(filter);
+                osc2.connect(filter);
+                filter.connect(distortion);
+                distortion.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc1.start(t);
+                osc2.start(t);
+                osc1.stop(t + duration);
+                osc2.stop(t + duration);
             } catch (e) {
-                console.log("Аудио ошибка:", e);
+                console.log("Ошибка аудио:", e);
             }
         }
 
@@ -223,7 +216,6 @@
             return group;
         }
 
-        // Массив всех динозавров на арене (будет содержать ровно 5 элементов при наличии кастомного)
         const allDinosaurs = [];
 
         const dino1 = createDetailedDino(0xef4444); dino1.position.set(-6, -1, -2); scene.add(dino1); allDinosaurs.push({ mesh: dino1, profile: 0 });
@@ -244,7 +236,6 @@
             scene.add(customDino);
             allDinosaurs.push({ mesh: customDino, profile: 4 });
         } else {
-            // Если кастомного нет, добавим еще одного для ровного счета в 5 штук
             const dino5 = createDetailedDino(0xec4899); dino5.position.set(0, -1, 4); scene.add(dino5); allDinosaurs.push({ mesh: dino5, profile: 4 });
         }
 
@@ -259,15 +250,14 @@
         scene.add(flyerGroup);
 
         function triggerMegaShow(type) {
-            // Выбираем случайного динозавра из 5 доступных на арене
             const randomEntry = allDinosaurs[Math.floor(Math.random() * allDinosaurs.length)];
             
-            // Воспроизводим индивидуальный рык именно этого типа динозавра!
-            playUniqueDinoRoar(randomEntry.profile);
+            // Воспроизводим индивидуальный органический рык выбранного динозавра
+            playOrganicDinoRoar(randomEntry.profile);
 
             const trickIndex = Math.floor(Math.random() * 30) + 1;
             const statusEl = document.getElementById('action-status');
-            statusEl.innerText = `Мега-шоу: Трюк #${trickIndex}/30 (Рев типа #${randomEntry.profile + 1})!`;
+            statusEl.innerText = `Мега-шоу: Трюк #${trickIndex}/30 (Рык типа #${randomEntry.profile + 1})`;
             statusEl.style.opacity = '1';
             setTimeout(() => { statusEl.style.opacity = '0'; }, 1500);
 
