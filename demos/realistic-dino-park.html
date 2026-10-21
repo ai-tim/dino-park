@@ -3,16 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парк Динозавров — Режим ТВ и Экосистема</title>
+    <title>Парк Динозавров — 3D Экосистема</title>
     <style>
         * { box-sizing: border-box; }
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
             background: #090d16; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: white;
         }
-        #canvas-container {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
-        }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         .top-bar {
             position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: center; z-index: 100;
             pointer-events: none;
@@ -43,8 +41,6 @@
         .park-ui-btn:active { transform: scale(0.96); }
         .park-ui-btn.meat { background: linear-gradient(135deg, #ef4444, #b91c1c); }
         .park-ui-btn.plant { background: linear-gradient(135deg, #10b981, #047857); }
-        
-        /* Класс полного скрытия для ТВ-режима */
         .tv-mode-hidden { display: none !important; }
 
         #action-status {
@@ -55,7 +51,7 @@
     </style>
 </head>
 <body>
-    <div id="action-status">Режим ТВ активен</div>
+    <div id="action-status">Новый динозавр выпущен в парк!</div>
 
     <div class="top-bar" id="topBar">
         <a href="../index.html" class="park-title-badge">🦖 Парк Динозавров</a>
@@ -71,12 +67,10 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // Автоматическое скрытие интерфейса при открытии ссылки с ?tv=1 или ?embed=1
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('tv') || urlParams.has('embed')) {
             document.getElementById('topBar').classList.add('tv-mode-hidden');
             document.getElementById('uiPanel').classList.add('tv-mode-hidden');
-            document.getElementById('action-status').classList.add('tv-mode-hidden');
         }
 
         const container = document.getElementById('canvas-container');
@@ -92,31 +86,23 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         container.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0x38bdf8, 0.7);
-        scene.add(ambientLight);
+        scene.add(new THREE.AmbientLight(0x38bdf8, 0.7));
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
         dirLight.position.set(15, 25, 15);
         scene.add(dirLight);
 
-        // Территория: Земля и скалы
-        const groundGeo = new THREE.PlaneGeometry(60, 60);
-        const groundMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 });
-        const ground = new THREE.Mesh(groundGeo, groundMat);
-        ground.rotation.x = -Math.PI / 2;
-        ground.position.y = -2;
-        scene.add(ground);
+        // Земля и скалы
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 }));
+        ground.rotation.x = -Math.PI / 2; ground.position.y = -2; scene.add(ground);
 
-        const rockMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
         for (let i = 0; i < 8; i++) {
             const scale = 2 + Math.random() * 3;
-            const rockGeo = new THREE.BoxGeometry(scale, scale * 1.5, scale);
-            const rock = new THREE.Mesh(rockGeo, rockMat);
+            const rock = new THREE.Mesh(new THREE.BoxGeometry(scale, scale * 1.5, scale), new THREE.MeshStandardMaterial({ color: 0x334155 }));
             const angle = (i / 8) * Math.PI * 2;
             rock.position.set(Math.cos(angle) * 16, -2 + scale * 0.75, Math.sin(angle) * 16);
             scene.add(rock);
         }
 
-        // Динозавры
         function createDetailedDino(color) {
             const group = new THREE.Group();
             const bodyMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.3 });
@@ -124,25 +110,38 @@
             const head = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1.2), bodyMat); head.position.set(0, 0.9, 2.2); group.add(head);
             const tail = new THREE.Mesh(new THREE.ConeGeometry(0.6, 2.5, 4), bodyMat); tail.rotation.x = Math.PI / 2; tail.position.set(0, 0.2, -2.8); group.add(tail);
             const legGeo = new THREE.BoxGeometry(0.5, 1.5, 0.5);
-            const legFL = new THREE.Mesh(legGeo, bodyMat); legFL.position.set(0.9, -1.1, 1.2); group.add(legFL);
-            const legFR = new THREE.Mesh(legGeo, bodyMat); legFR.position.set(-0.9, -1.1, 1.2); group.add(legFR);
-            const legBL = new THREE.Mesh(legGeo, bodyMat); legBL.position.set(0.9, -1.1, -1.2); group.add(legBL);
-            const legBR = new THREE.Mesh(legGeo, bodyMat); legBR.position.set(-0.9, -1.1, -1.2); group.add(legBR);
+            ['FL', 'FR', 'BL', 'BR'].forEach((pos, idx) => {
+                const leg = new THREE.Mesh(legGeo, bodyMat);
+                leg.position.set((idx % 2 === 0 ? 0.9 : -0.9), -1.1, (idx < 2 ? 1.2 : -1.2));
+                group.add(leg);
+            });
             return group;
         }
 
         const meatEaters = [];
         const plantEaters = [];
 
-        const dino1 = createDetailedDino(0xef4444); dino1.position.set(-6, -1, -2); scene.add(dino1); meatEaters.push(dino1);
-        const dino2 = createDetailedDino(0x22c55e); dino2.position.set(-2, -1, -6); scene.add(dino2); meatEaters.push(dino2);
-        const dino3 = createDetailedDino(0x3b82f6); dino3.position.set(3, -1, -2); scene.add(dino3); plantEaters.push(dino3);
-        
-        const dino4 = createDetailedDino(0xeab308); dino4.position.set(6, 0, -6);
-        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 3, 8), new THREE.MeshStandardMaterial({ color: 0xeab308 })); neck.position.set(0, 1.8, 0);
-        const neckHead = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), new THREE.MeshStandardMaterial({ color: 0xeab308 })); neckHead.position.set(0, 1.5, 0);
-        dino4.add(neck); dino4.add(neckHead);
-        scene.add(dino4); plantEaters.push(dino4);
+        // Базовые динозавры
+        const d1 = createDetailedDino(0xef4444); d1.position.set(-6, -1, -2); scene.add(d1); meatEaters.push(d1);
+        const d2 = createDetailedDino(0x22c55e); d2.position.set(-2, -1, -6); scene.add(d2); meatEaters.push(d2);
+        const d3 = createDetailedDino(0x3b82f6); d3.position.set(3, -1, -2); scene.add(d3); plantEaters.push(d3);
+        const d4 = createDetailedDino(0xeab308); d4.position.set(6, 0, -6);
+        d4.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 3, 8), new THREE.MeshStandardMaterial({ color: 0xeab308 })), { position: new THREE.Vector3(0, 1.8, 0) }));
+        scene.add(d4); plantEaters.push(d4);
+
+        // Если передан параметр нового динозавра из сканера — создаем его и добавляем на арену!
+        if (urlParams.has('newDino')) {
+            const customColor = parseInt(urlParams.get('newDino'), 16);
+            const customDino = createDetailedDino(customColor);
+            customDino.position.set(0, -1, 3);
+            scene.add(customDino);
+            meatEaters.push(customDino); // Участвует в шоу и трюках
+
+            // Показываем уведомление
+            const statusEl = document.getElementById('action-status');
+            statusEl.style.opacity = '1';
+            setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
+        }
 
         // Летающая фигура
         const flyerGroup = new THREE.Group();
@@ -205,22 +204,10 @@
                 if (elapsed < 1200) {
                     const progress = elapsed / 1200;
                     switch(flyerGroup.userData.flyTrickStyle) {
-                        case 0:
-                            flyerGroup.position.y = 8 + Math.sin(progress * Math.PI * 2) * 3;
-                            flyerGroup.rotation.x += 0.15;
-                            break;
-                        case 1:
-                            flyerGroup.rotation.y += 0.3;
-                            flyerGroup.position.x = Math.sin(progress * Math.PI * 4) * 4;
-                            break;
-                        case 2:
-                            flyerGroup.position.y += 0.1;
-                            flyerGroup.children[0].material.color.setHex(0xef4444);
-                            break;
-                        case 3:
-                            flyerGroup.rotation.z += 0.2;
-                            flyerGroup.scale.setScalar(1.3);
-                            break;
+                        case 0: flyerGroup.position.y = 8 + Math.sin(progress * Math.PI * 2) * 3; flyerGroup.rotation.x += 0.15; break;
+                        case 1: flyerGroup.rotation.y += 0.3; flyerGroup.position.x = Math.sin(progress * Math.PI * 4) * 4; break;
+                        case 2: flyerGroup.position.y += 0.1; flyerGroup.children[0].material.color.setHex(0xef4444); break;
+                        case 3: flyerGroup.rotation.z += 0.2; flyerGroup.scale.setScalar(1.3); break;
                     }
                 } else {
                     flyerGroup.userData.isPerforming = false;
