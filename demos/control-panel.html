@@ -15,38 +15,41 @@
         .panel-container {
             text-align: center; background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            padding: 36px 28px; border-radius: 28px;
+            padding: 32px 24px; border-radius: 28px;
             box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.15);
             max-width: 400px; width: 90%; border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .panel-emblem { font-size: 3rem; margin-bottom: 10px; }
+        .panel-emblem { font-size: 2.8rem; margin-bottom: 8px; }
         h1 {
-            margin: 0 0 10px 0; font-size: 1.7rem; font-weight: 800;
+            margin: 0 0 8px 0; font-size: 1.6rem; font-weight: 800;
             background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
-        p { margin: 0 0 24px 0; color: #94a3b8; font-size: 0.92rem; line-height: 1.5; }
+        p { margin: 0 0 20px 0; color: #94a3b8; font-size: 0.88rem; line-height: 1.45; }
         .control-btn {
             display: flex; align-items: center; justify-content: center; gap: 10px;
             width: 100%; background: linear-gradient(135deg, #ef4444, #dc2626);
-            color: white; border: none; padding: 15px; border-radius: 14px;
-            font-size: 1rem; font-weight: 700; cursor: pointer; text-decoration: none;
-            margin-bottom: 14px; box-shadow: 0 8px 20px rgba(239, 68, 68, 0.35);
+            color: white; border: none; padding: 13px; border-radius: 14px;
+            font-size: 0.95rem; font-weight: 700; cursor: pointer; text-decoration: none;
+            margin-bottom: 12px; box-shadow: 0 8px 20px rgba(239, 68, 68, 0.35);
             transition: transform 0.1s ease;
         }
         .control-btn:active { transform: scale(0.97); }
+        .control-btn.release { background: linear-gradient(135deg, #16a34a, #15803d); box-shadow: 0 8px 20px rgba(22, 163, 74, 0.35); }
         .control-btn.tv { background: linear-gradient(135deg, #7c3aed, #6d28d9); box-shadow: 0 8px 20px rgba(124, 58, 237, 0.35); }
         .control-btn.secondary { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: none; }
-        .footer-info { margin-top: 16px; font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; }
+        .footer-info { margin-top: 14px; font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; }
     </style>
 </head>
 <body>
     <div class="panel-container">
         <div class="panel-emblem">⚙️</div>
         <h1>Панель управления</h1>
-        <p>Управляйте режимами отображения парка и трансляцией на большой экран.</p>
+        <p>Управляйте режимами отображения парка и выпуском динозавров.</p>
         
-        <a href="./realistic-dino-park.html" class="control-btn"><span>🦖</span> Обычный режим парка</a>
+        <!-- Возвращенная кнопка выпуска динозавра -->
+        <a href="./scanner.html" class="control-btn release"><span>🦖</span> Выпустить динозавра</a>
+        <a href="./realistic-dino-park.html" class="control-btn"><span>🌍</span> Обычный режим парка</a>
         <a href="./realistic-dino-park.html?tv=1" class="control-btn tv"><span>📺</span> Режим ТВ (без интерфейса)</a>
         <a href="../index.html" class="control-btn secondary"><span>🏠</span> На главную</a>
         
