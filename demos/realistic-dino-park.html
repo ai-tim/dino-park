@@ -1,80 +1,4 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парк Динозавров — 3D Экосистема со звуком</title>
-    <style>
-        * { box-sizing: border-box; }
-        body, html {
-            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
-            background: #090d16; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: white;
-        }
-        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        .top-bar {
-            position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: center; z-index: 100;
-            pointer-events: none;
-        }
-        .park-title-badge {
-            background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            padding: 10px 16px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.15);
-            font-size: 0.95rem; font-weight: 700; box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            text-decoration: none; color: white; pointer-events: auto;
-        }
-        .panel-link-btn {
-            background: linear-gradient(135deg, #ef4444, #dc2626); color: white; padding: 10px 16px; border-radius: 12px;
-            text-decoration: none; font-weight: bold; font-size: 0.9rem; box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
-            border: none; cursor: pointer; pointer-events: auto; transition: transform 0.1s ease;
-        }
-        .panel-link-btn:active { transform: scale(0.96); }
-
-        .park-ui-panel {
-            position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
-            background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-            padding: 14px 18px; border-radius: 20px; box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.15); display: flex; gap: 12px; z-index: 100; width: 92%; max-width: 420px;
-        }
-        .park-ui-btn {
-            flex: 1; color: white; border: none; padding: 14px 12px; border-radius: 14px; font-weight: bold; font-size: 0.9rem;
-            cursor: pointer; text-align: center; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); transition: transform 0.1s ease; pointer-events: auto;
-        }
-        .park-ui-btn:active { transform: scale(0.96); }
-        .park-ui-btn.meat { background: linear-gradient(135deg, #ef4444, #b91c1c); }
-        .park-ui-btn.plant { background: linear-gradient(135deg, #10b981, #047857); }
-        .tv-mode-hidden { display: none !important; }
-
-        #action-status {
-            position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
-            background: rgba(34, 197, 94, 0.9); color: white; padding: 6px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: bold;
-            z-index: 100; opacity: 0; transition: opacity 0.3s ease; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-        }
-    </style>
-</head>
-<body>
-    <div id="action-status">Мега-шоу: Глубокое рычание динозавров!</div>
-
-    <div class="top-bar" id="topBar">
-        <a href="../index.html" class="park-title-badge">🦖 Парк Динозавров</a>
-        <a href="control-panel.html" class="panel-link-btn">Панель</a>
-    </div>
-
-    <div id="canvas-container"></div>
-
-    <div class="park-ui-panel" id="uiPanel">
-        <button class="park-ui-btn meat" onclick="triggerMegaShow('meat')">🥩 Бросить мясо</button>
-        <button class="park-ui-btn plant" onclick="triggerMegaShow('plant')">🌿 Бросить папоротник</button>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('tv') || urlParams.has('embed')) {
-            document.getElementById('topBar').classList.add('tv-mode-hidden');
-            document.getElementById('uiPanel').classList.add('tv-mode-hidden');
-        }
-
-        // Продвинутый Web Audio API синтезатор глубокого рычания
-        let audioCtx = null;
+let audioCtx = null;
         function playDinoRoar(isPlant) {
             try {
                 if (!audioCtx) {
@@ -85,198 +9,46 @@
                 }
 
                 const startTime = audioCtx.currentTime;
-                const duration = isPlant ? 0.7 : 1.2;
+                const duration = isPlant ? 0.8 : 1.4;
 
+                // Основной генератор баса
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
+                
+                // Фильтр низких частот (срезает писк, оставляя плотный гул и рык)
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(isPlant ? 300 : 150, startTime);
+                filter.frequency.exponentialRampToValueAtTime(60, startTime + duration);
 
                 osc.type = isPlant ? 'triangle' : 'sawtooth';
                 
-                // Утробный бас с понижением частоты
-                osc.frequency.setValueAtTime(isPlant ? 180 : 90, startTime);
-                osc.frequency.exponentialRampToValueAtTime(isPlant ? 80 : 25, startTime + duration);
+                // Утробные низкие частоты
+                osc.frequency.setValueAtTime(isPlant ? 120 : 70, startTime);
+                osc.frequency.exponentialRampToValueAtTime(isPlant ? 40 : 20, startTime + duration);
 
-                // Модуляция для дрожания челюсти при рычании
+                // Вибрато для дрожания голоса
                 const modulator = audioCtx.createOscillator();
                 const modGain = audioCtx.createGain();
-                modulator.frequency.value = 18;
-                modGain.gain.value = isPlant ? 20 : 45;
+                modulator.frequency.value = 14;
+                modGain.gain.value = 25;
                 modulator.connect(osc.frequency);
                 modulator.start(startTime);
                 modulator.stop(startTime + duration);
 
+                // Огибающая громкости
                 gain.gain.setValueAtTime(0.01, startTime);
-                gain.gain.linearRampToValueAtTime(0.4, startTime + 0.15);
+                gain.gain.linearRampToValueAtTime(0.5, startTime + 0.2);
                 gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
-                osc.connect(gain);
+                // Соединяем цепочку: Генератор -> Фильтр -> Громкость -> Динамик
+                osc.connect(filter);
+                filter.connect(gain);
                 gain.connect(audioCtx.destination);
 
                 osc.start(startTime);
                 osc.stop(startTime + duration);
             } catch (e) {
-                console.log("Аудио контекст ожидает взаимодействия", e);
+                console.log("Ошибка аудио:", e);
             }
         }
-
-        const container = document.getElementById('canvas-container');
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0b1329);
-        scene.fog = new THREE.FogExp2(0x0b1329, 0.035);
-
-        const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-        camera.position.set(0, 7, 19);
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(container.clientWidth, container.clientHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        container.appendChild(renderer.domElement);
-
-        scene.add(new THREE.AmbientLight(0x38bdf8, 0.7));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        dirLight.position.set(15, 25, 15);
-        scene.add(dirLight);
-
-        // Земля и скалы
-        const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 }));
-        ground.rotation.x = -Math.PI / 2; ground.position.y = -2; scene.add(ground);
-
-        for (let i = 0; i < 8; i++) {
-            const scale = 2 + Math.random() * 3;
-            const rock = new THREE.Mesh(new THREE.BoxGeometry(scale, scale * 1.5, scale), new THREE.MeshStandardMaterial({ color: 0x334155 }));
-            const angle = (i / 8) * Math.PI * 2;
-            rock.position.set(Math.cos(angle) * 16, -2 + scale * 0.75, Math.sin(angle) * 16);
-            scene.add(rock);
-        }
-
-        function createDetailedDino(colorHex) {
-            const group = new THREE.Group();
-            const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.3 });
-            group.add(new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.8, 3.5), bodyMat));
-            const head = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1.2), bodyMat); head.position.set(0, 0.9, 2.2); group.add(head);
-            const tail = new THREE.Mesh(new THREE.ConeGeometry(0.6, 2.5, 4), bodyMat); tail.rotation.x = Math.PI / 2; tail.position.set(0, 0.2, -2.8); group.add(tail);
-            
-            const legGeo = new THREE.BoxGeometry(0.5, 1.5, 0.5);
-            ['FL', 'FR', 'BL', 'BR'].forEach((pos, idx) => {
-                const leg = new THREE.Mesh(legGeo, bodyMat);
-                leg.position.set((idx % 2 === 0 ? 0.9 : -0.9), -1.1, (idx < 2 ? 1.2 : -1.2));
-                group.add(leg);
-            });
-            return group;
-        }
-
-        const meatEaters = [];
-        const plantEaters = [];
-
-        const dino1 = createDetailedDino(0xef4444); dino1.position.set(-6, -1, -2); scene.add(dino1); meatEaters.push(dino1);
-        const dino2 = createDetailedDino(0x22c55e); dino2.position.set(-2, -1, -6); scene.add(dino2); meatEaters.push(dino2);
-        const dino3 = createDetailedDino(0x3b82f6); dino3.position.set(3, -1, -2); scene.add(dino3); plantEaters.push(dino3);
-        
-        const dino4 = createDetailedDino(0xeab308); dino4.position.set(6, 0, -6);
-        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 3, 8), new THREE.MeshStandardMaterial({ color: 0xeab308 })); neck.position.set(0, 1.8, 0);
-        const neckHead = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), new THREE.MeshStandardMaterial({ color: 0xeab308 })); neckHead.position.set(0, 1.5, 0);
-        dino4.add(neck); dino4.add(neckHead);
-        scene.add(dino4); plantEaters.push(dino4);
-
-        if (urlParams.has('newDino')) {
-            const colorStr = urlParams.get('newDino');
-            const customColor = colorStr.startsWith('#') ? colorStr : '#' + colorStr;
-            const customDino = createDetailedDino(customColor);
-            customDino.position.set(0, -1, 3);
-            scene.add(customDino);
-            meatEaters.push(customDino);
-        }
-
-        // Летающая фигура (птеранодон)
-        const flyerGroup = new THREE.Group();
-        const flyerMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.2 });
-        flyerGroup.add(new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 2), flyerMat));
-        const wingGeo = new THREE.BufferGeometry();
-        wingGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0, 0, 0, 1.5, 3, 0, -1, 0, 0, 0, 0, 0, 1.5, -3, 0, -1]), 3));
-        flyerGroup.add(new THREE.Mesh(wingGeo, flyerMat));
-        flyerGroup.position.set(0, 8, -2);
-        scene.add(flyerGroup);
-
-        function triggerMegaShow(type) {
-            playDinoRoar(type === 'plant');
-
-            const targetList = (type === 'meat') ? meatEaters : plantEaters;
-            if (targetList.length === 0) return;
-            const randomDino = targetList[Math.floor(Math.random() * targetList.length)];
-            const trickIndex = Math.floor(Math.random() * 30) + 1;
-            
-            const statusEl = document.getElementById('action-status');
-            statusEl.innerText = `Мега-шоу: Трюк #${trickIndex}/30 (Рев активен!)`;
-            statusEl.style.opacity = '1';
-            setTimeout(() => { statusEl.style.opacity = '0'; }, 1500);
-
-            randomDino.userData.isPerforming = true;
-            randomDino.userData.trickStyle = Math.floor(Math.random() * 5);
-            randomDino.userData.startTime = Date.now();
-
-            flyerGroup.userData.isPerforming = true;
-            flyerGroup.userData.flyTrickStyle = Math.floor(Math.random() * 4);
-            flyerGroup.userData.startTime = Date.now();
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            const time = Date.now();
-
-            [...meatEaters, ...plantEaters].forEach((dino, i) => {
-                if (dino.userData.isPerforming) {
-                    const elapsed = time - dino.userData.startTime;
-                    if (elapsed < 1200) {
-                        const progress = elapsed / 1200;
-                        switch(dino.userData.trickStyle) {
-                            case 0: dino.rotation.y += 0.25; break;
-                            case 1: dino.position.y = Math.sin(progress * Math.PI * 2) * 2 + (i === 3 ? 0 : -1); break;
-                            case 2: dino.scale.setScalar(1 + Math.sin(progress * Math.PI) * 0.6); break;
-                            case 3: dino.rotation.z = Math.sin(progress * Math.PI * 6) * 0.4; break;
-                            case 4: dino.rotation.x = Math.sin(progress * Math.PI * 2) * 0.5; break;
-                        }
-                    } else {
-                        dino.userData.isPerforming = false;
-                        dino.scale.setScalar(1);
-                        dino.rotation.set(0,0,0);
-                        dino.position.y = (i === 3 ? 0 : -1);
-                    }
-                } else {
-                    dino.rotation.y += 0.005 * (i % 2 === 0 ? 1 : -1);
-                }
-            });
-
-            if (flyerGroup.userData.isPerforming) {
-                const elapsed = time - flyerGroup.userData.startTime;
-                if (elapsed < 1200) {
-                    const progress = elapsed / 1200;
-                    switch(flyerGroup.userData.flyTrickStyle) {
-                        case 0: flyerGroup.position.y = 8 + Math.sin(progress * Math.PI * 2) * 3; flyerGroup.rotation.x += 0.15; break;
-                        case 1: flyerGroup.rotation.y += 0.3; flyerGroup.position.x = Math.sin(progress * Math.PI * 4) * 4; break;
-                        case 2: flyerGroup.position.y += 0.1; flyerGroup.children[0].material.color.setHex(0xef4444); break;
-                        case 3: flyerGroup.rotation.z += 0.2; flyerGroup.scale.setScalar(1.3); break;
-                    }
-                } else {
-                    flyerGroup.userData.isPerforming = false;
-                    flyerGroup.position.set(0, 8, -2);
-                    flyerGroup.rotation.set(0, 0, 0);
-                    flyerGroup.scale.setScalar(1);
-                    flyerGroup.children[0].material.color.setHex(0xa855f7);
-                }
-            } else {
-                flyerGroup.position.y = 8 + Math.sin(time * 0.002) * 0.6;
-                flyerGroup.rotation.y += 0.008;
-            }
-
-            renderer.render(scene, camera);
-        }
-        animate();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
-        });
-    </script>
-</body>
-</html>
