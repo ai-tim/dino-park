@@ -51,7 +51,7 @@
     </style>
 </head>
 <body>
-    <div id="action-status">Мега-шоу со звуковым эффектом!</div>
+    <div id="action-status">Мега-шоу: Глубокое рычание динозавров!</div>
 
     <div class="top-bar" id="topBar">
         <a href="../index.html" class="park-title-badge">🦖 Парк Динозавров</a>
@@ -73,7 +73,7 @@
             document.getElementById('uiPanel').classList.add('tv-mode-hidden');
         }
 
-        // Web Audio API для процедурного синтеза звука рычания
+        // Продвинутый Web Audio API синтезатор глубокого рычания
         let audioCtx = null;
         function playDinoRoar(isPlant) {
             try {
@@ -84,22 +84,29 @@
                     audioCtx.resume();
                 }
 
+                const startTime = audioCtx.currentTime;
+                const duration = isPlant ? 0.7 : 1.2;
+
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
 
-                // Разный тип звука для хищников и травоядных
-                osc.type = isPlant ? 'sine' : 'sawtooth';
+                osc.type = isPlant ? 'triangle' : 'sawtooth';
                 
-                const startTime = audioCtx.currentTime;
-                const duration = isPlant ? 0.6 : 0.9;
+                // Утробный бас с понижением частоты
+                osc.frequency.setValueAtTime(isPlant ? 180 : 90, startTime);
+                osc.frequency.exponentialRampToValueAtTime(isPlant ? 80 : 25, startTime + duration);
 
-                // Частотная кривая для эффекта рычания
-                osc.frequency.setValueAtTime(isPlant ? 220 : 110, startTime);
-                osc.frequency.exponentialRampToValueAtTime(isPlant ? 110 : 40, startTime + duration);
+                // Модуляция для дрожания челюсти при рычании
+                const modulator = audioCtx.createOscillator();
+                const modGain = audioCtx.createGain();
+                modulator.frequency.value = 18;
+                modGain.gain.value = isPlant ? 20 : 45;
+                modulator.connect(osc.frequency);
+                modulator.start(startTime);
+                modulator.stop(startTime + duration);
 
-                // Огибающая громкости
                 gain.gain.setValueAtTime(0.01, startTime);
-                gain.gain.linearRampToValueAtTime(0.25, startTime + 0.1);
+                gain.gain.linearRampToValueAtTime(0.4, startTime + 0.15);
                 gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
                 osc.connect(gain);
@@ -108,7 +115,7 @@
                 osc.start(startTime);
                 osc.stop(startTime + duration);
             } catch (e) {
-                console.log("Аудио контекст заблокирован до первого клика", e);
+                console.log("Аудио контекст ожидает взаимодействия", e);
             }
         }
 
@@ -191,7 +198,6 @@
         scene.add(flyerGroup);
 
         function triggerMegaShow(type) {
-            // Воспроизводим синтезированный звук рычания
             playDinoRoar(type === 'plant');
 
             const targetList = (type === 'meat') ? meatEaters : plantEaters;
@@ -200,7 +206,7 @@
             const trickIndex = Math.floor(Math.random() * 30) + 1;
             
             const statusEl = document.getElementById('action-status');
-            statusEl.innerText = `Мега-шоу: Трюк #${trickIndex}/30 (Звук активен!)`;
+            statusEl.innerText = `Мега-шоу: Трюк #${trickIndex}/30 (Рев активен!)`;
             statusEl.style.opacity = '1';
             setTimeout(() => { statusEl.style.opacity = '0'; }, 1500);
 
