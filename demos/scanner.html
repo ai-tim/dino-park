@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Сканирование раскраски — Парк Динозавров</title>
+    <title>Умный сканер раскрасок — Парк Динозавров</title>
     <style>
         * { box-sizing: border-box; }
         body, html {
@@ -17,19 +17,19 @@
         .camera-container {
             position: relative; width: 90%; max-width: 400px; height: 60vh;
             background: #1e293b; border-radius: 24px; overflow: hidden;
-            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border: 2px solid #4ade80;
             display: flex; align-items: center; justify-content: center;
             box-shadow: 0 20px 40px rgba(0,0,0,0.6);
         }
-        video { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
+        video, canvas { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
         .scan-frame {
-            position: absolute; width: 80%; height: 70%;
-            border: 2px solid #4ade80; border-radius: 16px;
-            box-shadow: 0 0 0 1000px rgba(9, 13, 22, 0.6);
+            position: absolute; width: 75%; height: 65%;
+            border: 2px dashed #4ade80; border-radius: 16px;
+            box-shadow: 0 0 0 1000px rgba(9, 13, 22, 0.65);
             pointer-events: none; display: flex; align-items: center; justify-content: center;
         }
         .scan-frame span {
-            color: #4ade80; font-size: 0.85rem; font-weight: bold; background: rgba(15, 23, 42, 0.8);
+            color: #4ade80; font-size: 0.85rem; font-weight: bold; background: rgba(15, 23, 42, 0.85);
             padding: 6px 12px; border-radius: 8px; position: absolute; bottom: 12px;
         }
         .footer-panel { padding: 24px; width: 100%; max-width: 420px; display: flex; gap: 12px; z-index: 10; }
@@ -45,37 +45,49 @@
 </head>
 <body>
     <div class="header">
-        <h1>📷 Сканер раскраски</h1>
-        <p>Наведите камеру на рисунок в рамку</p>
+        <h1>📷 Умный сканер</h1>
+        <p>Наведите рамку на раскрашенный рисунок</p>
     </div>
 
     <div class="camera-container">
         <video id="video" autoplay playsinline></video>
+        <!-- Скрытый холст для анализа изображения с камеры -->
+        <canvas id="canvas" style="display:none;"></canvas>
         <div class="scan-frame">
-            <span>Поместите рисунок сюда</span>
+            <span>Сканирование цвета рисунка...</span>
         </div>
     </div>
 
     <div class="footer-panel">
         <a href="../index.html" class="btn back">Назад</a>
-        <button class="btn scan" onclick="captureAndProcess()">Выпустить в парк</button>
+        <button class="btn scan" onclick="scanDrawing()">Оживить в парке!</button>
     </div>
 
     <script>
         const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
         navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
             .then(stream => { video.srcObject = stream; })
-            .catch(err => {
-                console.log("Камера недоступна: ", err);
-            });
+            .catch(err => { console.log("Ошибка камеры: ", err); });
 
-        function captureAndProcess() {
-            // Генерируем случайный красивый HEX-цвет нового динозавра
-            const colors = ['ff5733', '33ff57', '3357ff', 'f3ff33', 'ff33f3', '33fff3'];
-            const randomColor = colors[Math.floor(Math.random() * colors.length)];
-            
-            // Переходим в парк и передаем цвет нового динозавра через параметры ссылки
-            window.location.href = `realistic-dino-park.html?newDino=${randomColor}`;
+        function scanDrawing() {
+            // Устанавливаем размеры холста равными потоку камеры
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Берем образец цвета из центральной зоны кадра (где находится раскраска)
+            const centerX = Math.floor(canvas.width / 2);
+            const centerY = Math.floor(canvas.height / 2);
+            const pixel = ctx.getImageData(centerX, centerY, 1, 1).data;
+
+            // Преобразуем RGB в HEX для передачи в 3D-парк
+            const hexColor = ((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1);
+
+            // Перенаправляем в парк с реальным цветом с бумажного рисунка
+            window.location.href = `realistic-dino-park.html?newDino=${hexColor}`;
         }
     </script>
 </body>
