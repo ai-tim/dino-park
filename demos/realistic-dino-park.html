@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парк Динозавров — 3D Экосистема</title>
+    <title>Парк Динозавров — 3D Экосистема со звуком</title>
     <style>
         * { box-sizing: border-box; }
         body, html {
@@ -51,7 +51,7 @@
     </style>
 </head>
 <body>
-    <div id="action-status">Новый динозавр успешно выпущен в парк!</div>
+    <div id="action-status">Мега-шоу со звуковым эффектом!</div>
 
     <div class="top-bar" id="topBar">
         <a href="../index.html" class="park-title-badge">🦖 Парк Динозавров</a>
@@ -71,6 +71,45 @@
         if (urlParams.has('tv') || urlParams.has('embed')) {
             document.getElementById('topBar').classList.add('tv-mode-hidden');
             document.getElementById('uiPanel').classList.add('tv-mode-hidden');
+        }
+
+        // Web Audio API для процедурного синтеза звука рычания
+        let audioCtx = null;
+        function playDinoRoar(isPlant) {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                // Разный тип звука для хищников и травоядных
+                osc.type = isPlant ? 'sine' : 'sawtooth';
+                
+                const startTime = audioCtx.currentTime;
+                const duration = isPlant ? 0.6 : 0.9;
+
+                // Частотная кривая для эффекта рычания
+                osc.frequency.setValueAtTime(isPlant ? 220 : 110, startTime);
+                osc.frequency.exponentialRampToValueAtTime(isPlant ? 110 : 40, startTime + duration);
+
+                // Огибающая громкости
+                gain.gain.setValueAtTime(0.01, startTime);
+                gain.gain.linearRampToValueAtTime(0.25, startTime + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+            } catch (e) {
+                console.log("Аудио контекст заблокирован до первого клика", e);
+            }
         }
 
         const container = document.getElementById('canvas-container');
@@ -111,17 +150,17 @@
             const tail = new THREE.Mesh(new THREE.ConeGeometry(0.6, 2.5, 4), bodyMat); tail.rotation.x = Math.PI / 2; tail.position.set(0, 0.2, -2.8); group.add(tail);
             
             const legGeo = new THREE.BoxGeometry(0.5, 1.5, 0.5);
-            const legFL = new THREE.Mesh(legGeo, bodyMat); legFL.position.set(0.9, -1.1, 1.2); group.add(legFL);
-            const legFR = new THREE.Mesh(legGeo, bodyMat); legFR.position.set(-0.9, -1.1, 1.2); group.add(legFR);
-            const legBL = new THREE.Mesh(legGeo, bodyMat); legBL.position.set(0.9, -1.1, -1.2); group.add(legBL);
-            const legBR = new THREE.Mesh(legGeo, bodyMat); legBR.position.set(-0.9, -1.1, -1.2); group.add(legBR);
+            ['FL', 'FR', 'BL', 'BR'].forEach((pos, idx) => {
+                const leg = new THREE.Mesh(legGeo, bodyMat);
+                leg.position.set((idx % 2 === 0 ? 0.9 : -0.9), -1.1, (idx < 2 ? 1.2 : -1.2));
+                group.add(leg);
+            });
             return group;
         }
 
         const meatEaters = [];
         const plantEaters = [];
 
-        // 1. Создаем базовых динозавров в любом случае
         const dino1 = createDetailedDino(0xef4444); dino1.position.set(-6, -1, -2); scene.add(dino1); meatEaters.push(dino1);
         const dino2 = createDetailedDino(0x22c55e); dino2.position.set(-2, -1, -6); scene.add(dino2); meatEaters.push(dino2);
         const dino3 = createDetailedDino(0x3b82f6); dino3.position.set(3, -1, -2); scene.add(dino3); plantEaters.push(dino3);
@@ -132,7 +171,6 @@
         dino4.add(neck); dino4.add(neckHead);
         scene.add(dino4); plantEaters.push(dino4);
 
-        // 2. Если передан параметр от сканера, добавляем кастомного динозавра
         if (urlParams.has('newDino')) {
             const colorStr = urlParams.get('newDino');
             const customColor = colorStr.startsWith('#') ? colorStr : '#' + colorStr;
@@ -140,10 +178,6 @@
             customDino.position.set(0, -1, 3);
             scene.add(customDino);
             meatEaters.push(customDino);
-
-            const statusEl = document.getElementById('action-status');
-            statusEl.style.opacity = '1';
-            setTimeout(() => { statusEl.style.opacity = '0'; }, 3500);
         }
 
         // Летающая фигура (птеранодон)
@@ -157,15 +191,18 @@
         scene.add(flyerGroup);
 
         function triggerMegaShow(type) {
+            // Воспроизводим синтезированный звук рычания
+            playDinoRoar(type === 'plant');
+
             const targetList = (type === 'meat') ? meatEaters : plantEaters;
             if (targetList.length === 0) return;
             const randomDino = targetList[Math.floor(Math.random() * targetList.length)];
             const trickIndex = Math.floor(Math.random() * 30) + 1;
             
             const statusEl = document.getElementById('action-status');
-            statusEl.innerText = `Мега-шоу: Трюк #${trickIndex}/30`;
+            statusEl.innerText = `Мега-шоу: Трюк #${trickIndex}/30 (Звук активен!)`;
             statusEl.style.opacity = '1';
-            setTimeout(() => { statusEl.style.opacity = '0'; }, 1200);
+            setTimeout(() => { statusEl.style.opacity = '0'; }, 1500);
 
             randomDino.userData.isPerforming = true;
             randomDino.userData.trickStyle = Math.floor(Math.random() * 5);
