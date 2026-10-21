@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парк Динозавров — 3D Экосистема со звуком</title>
+    <title>Парк Динозавров — 3D Экосистема</title>
     <style>
         * { box-sizing: border-box; }
         body, html {
@@ -51,7 +51,7 @@
     </style>
 </head>
 <body>
-    <div id="action-status">Мега-шоу: Басовый рык динозавров!</div>
+    <div id="action-status">Парк активен!</div>
 
     <div class="top-bar" id="topBar">
         <a href="../index.html" class="park-title-badge">🦖 Парк Динозавров</a>
@@ -73,53 +73,22 @@
             document.getElementById('uiPanel').classList.add('tv-mode-hidden');
         }
 
-        let audioCtx = null;
-        function playDinoRoar(isPlant) {
+        // Простой и надежный звуковой сигнал без зависаний
+        function playSimpleSound() {
             try {
-                if (!audioCtx) {
-                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                }
-                if (audioCtx.state === 'suspended') {
-                    audioCtx.resume();
-                }
-
-                const startTime = audioCtx.currentTime;
-                const duration = isPlant ? 0.8 : 1.4;
-
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                
-                const filter = audioCtx.createBiquadFilter();
-                filter.type = 'lowpass';
-                filter.frequency.setValueAtTime(isPlant ? 300 : 150, startTime);
-                filter.frequency.exponentialRampToValueAtTime(60, startTime + duration);
-
-                osc.type = isPlant ? 'triangle' : 'sawtooth';
-                
-                osc.frequency.setValueAtTime(isPlant ? 120 : 70, startTime);
-                osc.frequency.exponentialRampToValueAtTime(isPlant ? 40 : 20, startTime + duration);
-
-                const modulator = audioCtx.createOscillator();
-                const modGain = audioCtx.createGain();
-                modulator.frequency.value = 14;
-                modGain.gain.value = 25;
-                modulator.connect(osc.frequency);
-                modulator.start(startTime);
-                modulator.stop(startTime + duration);
-
-                gain.gain.setValueAtTime(0.01, startTime);
-                gain.gain.linearRampToValueAtTime(0.5, startTime + 0.2);
-                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-
-                osc.connect(filter);
-                filter.connect(gain);
-                gain.connect(audioCtx.destination);
-
-                osc.start(startTime);
-                osc.stop(startTime + duration);
-            } catch (e) {
-                console.log("Ошибка аудио:", e);
-            }
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.4);
+                gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.4);
+            } catch(e) {}
         }
 
         const container = document.getElementById('canvas-container');
@@ -140,6 +109,7 @@
         dirLight.position.set(15, 25, 15);
         scene.add(dirLight);
 
+        // Земля и скалы
         const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 }));
         ground.rotation.x = -Math.PI / 2; ground.position.y = -2; scene.add(ground);
 
@@ -170,6 +140,7 @@
         const meatEaters = [];
         const plantEaters = [];
 
+        // Создаем динозавров
         const dino1 = createDetailedDino(0xef4444); dino1.position.set(-6, -1, -2); scene.add(dino1); meatEaters.push(dino1);
         const dino2 = createDetailedDino(0x22c55e); dino2.position.set(-2, -1, -6); scene.add(dino2); meatEaters.push(dino2);
         const dino3 = createDetailedDino(0x3b82f6); dino3.position.set(3, -1, -2); scene.add(dino3); plantEaters.push(dino3);
@@ -182,13 +153,14 @@
 
         if (urlParams.has('newDino')) {
             const colorStr = urlParams.get('newDino');
-            const customColor = colorStr.startsWith('#') ? colorStr : '#' + colorStr;
+            const customColor = colorStr.startsWith('#' ) ? colorStr : '#' + colorStr;
             const customDino = createDetailedDino(customColor);
             customDino.position.set(0, -1, 3);
             scene.add(customDino);
             meatEaters.push(customDino);
         }
 
+        // Летающая фигура (птеранодон)
         const flyerGroup = new THREE.Group();
         const flyerMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.2 });
         flyerGroup.add(new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 2), flyerMat));
@@ -199,15 +171,14 @@
         scene.add(flyerGroup);
 
         function triggerMegaShow(type) {
-            playDinoRoar(type === 'plant');
-
+            playSimpleSound();
             const targetList = (type === 'meat') ? meatEaters : plantEaters;
             if (targetList.length === 0) return;
             const randomDino = targetList[Math.floor(Math.random() * targetList.length)];
             const trickIndex = Math.floor(Math.random() * 30) + 1;
             
             const statusEl = document.getElementById('action-status');
-            statusEl.innerText = `Мега-шоу: Трюк #${trickIndex}/30 (Басовый рев!)`;
+            statusEl.innerText = `Мега-шоу: Трюк #${trickIndex}/30`;
             statusEl.style.opacity = '1';
             setTimeout(() => { statusEl.style.opacity = '0'; }, 1500);
 
