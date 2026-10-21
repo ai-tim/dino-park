@@ -11,16 +11,9 @@
             background: #090d16; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: white;
             display: flex; flex-direction: column; align-items: center; justify-content: space-between;
         }
-        .header {
-            padding: 20px; text-align: center; z-index: 10;
-        }
-        .header h1 {
-            font-size: 1.4rem; color: #4ade80; margin: 0 0 6px 0;
-        }
-        .header p {
-            font-size: 0.85rem; color: #94a3b8; margin: 0;
-        }
-        /* Область камеры / видоискателя */
+        .header { padding: 20px; text-align: center; z-index: 10; }
+        .header h1 { font-size: 1.4rem; color: #4ade80; margin: 0 0 6px 0; }
+        .header p { font-size: 0.85rem; color: #94a3b8; margin: 0; }
         .camera-container {
             position: relative; width: 90%; max-width: 400px; height: 60vh;
             background: #1e293b; border-radius: 24px; overflow: hidden;
@@ -28,24 +21,18 @@
             display: flex; align-items: center; justify-content: center;
             box-shadow: 0 20px 40px rgba(0,0,0,0.6);
         }
-        video, canvas {
-            width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;
-        }
+        video { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
         .scan-frame {
             position: absolute; width: 80%; height: 70%;
             border: 2px solid #4ade80; border-radius: 16px;
             box-shadow: 0 0 0 1000px rgba(9, 13, 22, 0.6);
-            pointer-events: none;
-            display: flex; align-items: center; justify-content: center;
+            pointer-events: none; display: flex; align-items: center; justify-content: center;
         }
         .scan-frame span {
             color: #4ade80; font-size: 0.85rem; font-weight: bold; background: rgba(15, 23, 42, 0.8);
             padding: 6px 12px; border-radius: 8px; position: absolute; bottom: 12px;
         }
-        /* Панель управления снизу */
-        .footer-panel {
-            padding: 24px; width: 100%; max-width: 420px; display: flex; gap: 12px; z-index: 10;
-        }
+        .footer-panel { padding: 24px; width: 100%; max-width: 420px; display: flex; gap: 12px; z-index: 10; }
         .btn {
             flex: 1; padding: 14px; border-radius: 14px; font-weight: bold; font-size: 0.95rem;
             cursor: pointer; text-align: center; border: none; text-decoration: none;
@@ -58,7 +45,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>📷 Сканер раскрасок</h1>
+        <h1>📷 Сканер раскраски</h1>
         <p>Наведите камеру на рисунок в рамку</p>
     </div>
 
@@ -71,22 +58,24 @@
 
     <div class="footer-panel">
         <a href="../index.html" class="btn back">Назад</a>
-        <button class="btn scan" onclick="captureAndProcess()">Сфотографировать</button>
+        <button class="btn scan" onclick="captureAndProcess()">Выпустить в парк</button>
     </div>
 
     <script>
-        // Инициализация камеры мобильного телефона
         const video = document.getElementById('video');
         navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
             .then(stream => { video.srcObject = stream; })
             .catch(err => {
-                console.log("Камера недоступна или заблокирована: ", err);
-                alert("Не удалось получить доступ к камере. Убедитесь, что разрешили использование камеры.");
+                console.log("Камера недоступна: ", err);
             });
 
         function captureAndProcess() {
-            alert("Рисунок успешно отсканирован! Переносим в 3D-парк...");
-            window.location.href = "realistic-dino-park.html";
+            // Генерируем случайный красивый HEX-цвет нового динозавра
+            const colors = ['ff5733', '33ff57', '3357ff', 'f3ff33', 'ff33f3', '33fff3'];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            
+            // Переходим в парк и передаем цвет нового динозавра через параметры ссылки
+            window.location.href = `realistic-dino-park.html?newDino=${randomColor}`;
         }
     </script>
 </body>
