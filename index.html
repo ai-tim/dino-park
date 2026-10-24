@@ -58,7 +58,7 @@
     </style>
 </head>
 <body>
-    <button class="audio-control" id="audioToggle" onclick="toggleParkMusic()">🎵 Музыка парка: Выкл</button>
+    <button class="audio-control" id="audioToggle" onclick="toggleParkMusic()">🎵 Музыка парка: Вкл</button>
 
     <div id="canvas-container"></div>
 
@@ -77,23 +77,42 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // Аудио-синтезатор сказочной мелодии
+        // --- Аудио-синтезатор (Автоматический старт с защитой браузера) ---
         let audioCtx = null;
         let isMusicPlaying = false;
         let melodyInterval = null;
 
+        function initAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function startParkMusic() {
+            initAudioContext();
+            isMusicPlaying = true;
+            document.getElementById('audioToggle').innerText = "🎵 Музыка парка: Вкл";
+            if (melodyInterval) clearInterval(melodyInterval);
+            
+            const notes = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25];
+            melodyInterval = setInterval(() => {
+                if (!isMusicPlaying) return;
+                const randomNote = notes[Math.floor(Math.random() * notes.length)];
+                playNote(randomNote, 1.2);
+            }, 800);
+        }
+
         function toggleParkMusic() {
             const btn = document.getElementById('audioToggle');
-            if (!isMusicPlaying) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                isMusicPlaying = true;
-                btn.innerText = "🎵 Музыка парка: Вкл";
-                startCuteMelody();
-            } else {
+            if (isMusicPlaying) {
                 isMusicPlaying = false;
                 if (melodyInterval) clearInterval(melodyInterval);
-                if (audioCtx) audioCtx.close();
                 btn.innerText = "🎵 Музыка парка: Выкл";
+            } else {
+                startParkMusic();
             }
         }
 
@@ -113,16 +132,14 @@
             } catch(e) {}
         }
 
-        function startCuteMelody() {
-            const notes = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25];
-            melodyInterval = setInterval(() => {
-                if (!isMusicPlaying) return;
-                const randomNote = notes[Math.floor(Math.random() * notes.length)];
-                playNote(randomNote, 1.2);
-            }, 800);
-        }
+        // Автозапуск музыки при первом клике/касании страницы (обход ограничений браузера)
+        window.addEventListener('pointerdown', () => {
+            if (!isMusicPlaying && !audioCtx) {
+                startParkMusic();
+            }
+        }, { once: true });
 
-        // 3D Сцена
+        // --- 3D Сцена ---
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x7dd3fc);
@@ -177,7 +194,7 @@
             createTree(Math.cos(angle) * dist, Math.sin(angle) * dist - 4);
         }
 
-        // Птеродактиль с пикированием
+        // Птеродактиль
         const flyerGroup = new THREE.Group();
         const flyerMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.3 });
         flyerGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 1.8), flyerMat));
@@ -193,7 +210,7 @@
         flyerGroup.add(new THREE.Mesh(wingGeo, flyerMat));
         scene.add(flyerGroup);
 
-        // Умные динозавры с естественной медленной поступью и поведением
+        // Динозавры с защитой от столкновений (коллизиями) и мгновенным стартом
         function createSmartDino(colorHex, startX, startZ) {
             const group = new THREE.Group();
             const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 });
@@ -225,9 +242,9 @@
                 mesh: group,
                 targetX: startX,
                 targetZ: startZ,
-                speed: 0.005 + Math.random() * 0.003, // Очень спокойная, естественная скорость
-                state: 'grazing', // 'grazing' (ест/стоит) или 'walking' (идет)
-                timer: 3 + Math.random() * 3
+                speed: 0.005 + Math.random() * 0.002,
+                state: 'walking', // сразу активны при входе
+                timer: 2 + Math.random() * 2
             };
         }
 
@@ -238,17 +255,31 @@
         ];
 
         function updateEcosystem(time) {
-            // Экосистема динозавров: медленная ходьба, щипание травы, паузы
+            // Экосистема с коллизиями (проверкой расстояния друг от друга)
             smartDinosaurs.forEach((dino, idx) => {
                 dino.timer -= 0.016;
+
+                // Проверка столкновений с другими динозаврами
+                for (let j = 0; j < smartDinosaurs.length; j++) {
+                    if (idx === j) continue;
+                    const other = smartDinosaurs[j];
+                    const distToOther = dino.mesh.position.distanceTo(other.mesh.position);
+                    if (distToOther < 2.5) {
+                        // Если подошли слишком близко — меняем цель, чтобы разойтись
+                        dino.targetX = dino.mesh.position.x + (Math.random() - 0.5) * 6;
+                        dino.targetZ = dino.mesh.position.z + (Math.random() - 0.5) * 6;
+                        dino.state = 'walking';
+                        dino.timer = 5;
+                    }
+                }
+
                 if (dino.state === 'grazing') {
-                    // Во время еды/отдыха слегка покачиваем голову (имитация пощипывания)
                     dino.mesh.position.y = -2 + Math.sin(time * 3 + idx) * 0.03;
                     if (dino.timer <= 0) {
-                        dino.targetX = (Math.random() - 0.5) * 14;
-                        dino.targetZ = (Math.random() - 0.5) * 10 - 3;
+                        dino.targetX = (Math.random() - 0.5) * 12;
+                        dino.targetZ = (Math.random() - 0.5) * 8 - 3;
                         dino.state = 'walking';
-                        dino.timer = 8 + Math.random() * 6; // идет дольше
+                        dino.timer = 7 + Math.random() * 5;
                     }
                 } else {
                     const dx = dino.targetX - dino.mesh.position.x;
@@ -265,7 +296,6 @@
                         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                         dino.mesh.rotation.y += angleDiff * 0.03;
 
-                        // Медленный, тяжелый шаг
                         dino.mesh.position.x += Math.sin(dino.mesh.rotation.y) * dino.speed * 12;
                         dino.mesh.position.z += Math.cos(dino.mesh.rotation.y) * dino.speed * 12;
                         dino.mesh.position.y = -2 + Math.abs(Math.sin(time * 4 + idx)) * 0.08;
@@ -273,16 +303,12 @@
                 }
             });
 
-            // Птеродактиль: круговой полет с красивыми пике к деревьям
+            // Птеродактиль
             const flyerAngle = time * 0.4;
             const radius = 10;
             flyerGroup.position.x = Math.cos(flyerAngle) * radius;
             flyerGroup.position.z = Math.sin(flyerAngle) * radius - 4;
-            
-            // Волнообразная высота с резкими пике вниз и взмыванием вверх
             flyerGroup.position.y = 8 + Math.sin(time * 0.8) * 4; 
-            
-            // Наклон корпуса при пике
             flyerGroup.rotation.x = Math.cos(time * 0.8) * 0.4;
             flyerGroup.rotation.y = -flyerAngle - Math.PI / 2;
             flyerGroup.rotation.z = Math.sin(time * 4) * 0.2;
