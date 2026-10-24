@@ -12,7 +12,6 @@
         }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         
-        /* Легкий интерфейс поверх природы */
         .menu-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;
             display: flex; flex-direction: column; justify-content: space-between; align-items: center;
@@ -78,7 +77,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // --- Аудио-синтезатор сказочной мелодии ---
+        // Аудио-синтезатор сказочной мелодии
         let audioCtx = null;
         let isMusicPlaying = false;
         let melodyInterval = null;
@@ -123,7 +122,7 @@
             }, 800);
         }
 
-        // --- 3D Сцена с природой, умными динозаврами и летающим птеродактилем ---
+        // 3D Сцена
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x7dd3fc);
@@ -151,7 +150,7 @@
         ground.position.y = -2;
         scene.add(ground);
 
-        // Деревья по периметру
+        // Деревья
         function createTree(x, z) {
             const treeGroup = new THREE.Group();
             const trunk = new THREE.Mesh(
@@ -178,29 +177,23 @@
             createTree(Math.cos(angle) * dist, Math.sin(angle) * dist - 4);
         }
 
-        // --- Создание летающего птеродактиля ---
+        // Птеродактиль с пикированием
         const flyerGroup = new THREE.Group();
         const flyerMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.3 });
-        
-        // Тело и голова птеродактиля
         flyerGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 1.8), flyerMat));
         const flyerHead = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.8), flyerMat);
         flyerHead.position.set(0, 0.2, 1.1);
         flyerGroup.add(flyerHead);
 
-        // Крылья
         const wingGeo = new THREE.BufferGeometry();
         wingGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
             0, 0, 0,   0, 0, 1.2,   3.5, 0, -0.8,
             0, 0, 0,   0, 0, 1.2,  -3.5, 0, -0.8
         ]), 3));
-        const wings = new THREE.Mesh(wingGeo, flyerMat);
-        flyerGroup.add(wings);
-
-        flyerGroup.position.set(0, 9, -2);
+        flyerGroup.add(new THREE.Mesh(wingGeo, flyerMat));
         scene.add(flyerGroup);
 
-        // Наземные умные динозавры
+        // Умные динозавры с естественной медленной поступью и поведением
         function createSmartDino(colorHex, startX, startZ) {
             const group = new THREE.Group();
             const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 });
@@ -230,13 +223,11 @@
 
             return {
                 mesh: group,
-                x: startX,
-                z: startZ,
                 targetX: startX,
                 targetZ: startZ,
-                speed: 0.015 + Math.random() * 0.01,
-                state: 'walking',
-                restTimer: 0
+                speed: 0.005 + Math.random() * 0.003, // Очень спокойная, естественная скорость
+                state: 'grazing', // 'grazing' (ест/стоит) или 'walking' (идет)
+                timer: 3 + Math.random() * 3
             };
         }
 
@@ -246,49 +237,55 @@
             createSmartDino(0xdb2777, -5, 4)
         ];
 
-        // Обновление логики динозавров и полета птеродактиля
         function updateEcosystem(time) {
-            // ИИ наземных динозавров
+            // Экосистема динозавров: медленная ходьба, щипание травы, паузы
             smartDinosaurs.forEach((dino, idx) => {
-                if (dino.state === 'resting') {
-                    dino.restTimer -= 0.016;
-                    dino.mesh.position.y = -2 + Math.sin(time * 8 + idx) * 0.05;
-                    if (dino.restTimer <= 0) {
-                        dino.targetX = (Math.random() - 0.5) * 16;
-                        dino.targetZ = (Math.random() - 0.5) * 12 - 3;
+                dino.timer -= 0.016;
+                if (dino.state === 'grazing') {
+                    // Во время еды/отдыха слегка покачиваем голову (имитация пощипывания)
+                    dino.mesh.position.y = -2 + Math.sin(time * 3 + idx) * 0.03;
+                    if (dino.timer <= 0) {
+                        dino.targetX = (Math.random() - 0.5) * 14;
+                        dino.targetZ = (Math.random() - 0.5) * 10 - 3;
                         dino.state = 'walking';
+                        dino.timer = 8 + Math.random() * 6; // идет дольше
                     }
                 } else {
                     const dx = dino.targetX - dino.mesh.position.x;
                     const dz = dino.targetZ - dino.mesh.position.z;
                     const dist = Math.sqrt(dx * dx + dz * dz);
 
-                    if (dist < 0.5) {
-                        dino.state = 'resting';
-                        dino.restTimer = 2 + Math.random() * 3;
+                    if (dist < 0.4 || dino.timer <= 0) {
+                        dino.state = 'grazing';
+                        dino.timer = 4 + Math.random() * 4;
                     } else {
                         const targetAngle = Math.atan2(dx, dz);
                         let angleDiff = targetAngle - dino.mesh.rotation.y;
                         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                        dino.mesh.rotation.y += angleDiff * 0.05;
+                        dino.mesh.rotation.y += angleDiff * 0.03;
 
-                        dino.mesh.position.x += Math.sin(dino.mesh.rotation.y) * dino.speed * 30;
-                        dino.mesh.position.z += Math.cos(dino.mesh.rotation.y) * dino.speed * 30;
-                        dino.mesh.position.y = -2 + Math.abs(Math.sin(time * 12 + idx)) * 0.15;
+                        // Медленный, тяжелый шаг
+                        dino.mesh.position.x += Math.sin(dino.mesh.rotation.y) * dino.speed * 12;
+                        dino.mesh.position.z += Math.cos(dino.mesh.rotation.y) * dino.speed * 12;
+                        dino.mesh.position.y = -2 + Math.abs(Math.sin(time * 4 + idx)) * 0.08;
                     }
                 }
             });
 
-            // Полет птеродактиля по кругу над долиной с взмахами крыльев
-            const flyerAngle = time * 0.6;
-            flyerGroup.position.x = Math.cos(flyerAngle) * 9;
-            flyerGroup.position.z = Math.sin(flyerAngle) * 6 - 4;
-            flyerGroup.position.y = 9 + Math.sin(time * 2) * 1.2;
-            flyerGroup.rotation.y = -flyerAngle - Math.PI / 2;
+            // Птеродактиль: круговой полет с красивыми пике к деревьям
+            const flyerAngle = time * 0.4;
+            const radius = 10;
+            flyerGroup.position.x = Math.cos(flyerAngle) * radius;
+            flyerGroup.position.z = Math.sin(flyerAngle) * radius - 4;
             
-            // Имитация взмахов крыльев (наклон по крену)
-            flyerGroup.rotation.z = Math.sin(time * 8) * 0.25;
+            // Волнообразная высота с резкими пике вниз и взмыванием вверх
+            flyerGroup.position.y = 8 + Math.sin(time * 0.8) * 4; 
+            
+            // Наклон корпуса при пике
+            flyerGroup.rotation.x = Math.cos(time * 0.8) * 0.4;
+            flyerGroup.rotation.y = -flyerAngle - Math.PI / 2;
+            flyerGroup.rotation.z = Math.sin(time * 4) * 0.2;
         }
 
         function animate() {
