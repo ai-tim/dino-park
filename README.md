@@ -71,7 +71,7 @@ css/           стили              assets/      музыка, голоса, 
 js/            util, store, sync, needs, voices, dinos, template, photo, backgrounds, scene,
                ui, park, parks, landing, tv, music, config, vendor/qrcode.js
 server/        server.js (HTTP + WebSocket), test/security.test.js
-tests/         e2e.js, scan-stress.js, screens/ (скриншоты)
+tests/         e2e.js, scan-stress.js, mobile.js (iPhone), screens/ (скриншоты)
 tools/         make-voices.sh (сборка голосов из записей)
 legacy/        предыдущая версия сайта (Three.js-демо, сканер, панель, исходные записи голосов)
 ```
@@ -84,6 +84,7 @@ cd tests && npm install                                   # playwright-core, н�
 BASE=http://localhost:8000 node e2e.js                    # статический режим
 BASE=http://localhost:8080 SERVER=1 node e2e.js           # с сервером (синхронизация между «устройствами»)
 BASE=http://localhost:8000 node scan-stress.js            # стресс-тест распознавания (99 фото)
+BASE=http://localhost:8000 node mobile.js                 # iPhone: лендинг → новый парк → динозавры (WebKit, если установлен: npx playwright install webkit)
 ```
 
 ## Советы по фото

@@ -1,10 +1,11 @@
 /* Динопарк — посадочная страница */
 html:has(body.lp) { height: auto; }
+html.lp-html { height: auto; }
 body.lp { overflow-x: hidden; overflow-y: auto; height: auto; background: #0b2a2e; }
-.lp-hero { position: relative; height: min(100vh, 900px); min-height: 560px; overflow: hidden; color: #fff; }
-.lp-hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; transition: opacity .6s; }
+.lp-hero { position: relative; height: 100vh; height: min(100vh, 900px); height: min(100svh, 900px); min-height: 560px; overflow: hidden; color: #fff; }
+.lp-hero canvas { position: absolute; top: 0; left: 0; right: 0; bottom: 0; inset: 0; width: 100%; height: 100%; display: block; transition: opacity .6s; }
 .lp-hero canvas.fade { opacity: 0; }
-.lp-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(6,24,28,.78) 0%, rgba(6,24,28,.45) 42%, rgba(6,24,28,0) 70%), linear-gradient(0deg, rgba(6,24,28,.55), rgba(6,24,28,0) 30%); pointer-events: none; }
+.lp-shade { position: absolute; top: 0; left: 0; right: 0; bottom: 0; inset: 0; background: linear-gradient(90deg, rgba(6,24,28,.78) 0%, rgba(6,24,28,.45) 42%, rgba(6,24,28,0) 70%), linear-gradient(0deg, rgba(6,24,28,.55), rgba(6,24,28,0) 30%); pointer-events: none; }
 .lp-nav { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; padding: 16px clamp(16px, 4vw, 48px); z-index: 2; }
 .lp-logo { font-weight: 900; font-size: 22px; color: #fff; text-decoration: none; text-shadow: 0 2px 10px rgba(0,0,0,.5); }
 .lp-nav-links a { color: #fff; text-decoration: none; font-weight: 800; margin-left: 18px; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
@@ -13,7 +14,8 @@ body.lp { overflow-x: hidden; overflow-y: auto; height: auto; background: #0b2a2
 .lp-hero-text h1 { font-size: clamp(34px, 6vw, 68px); line-height: 1.04; margin: 0 0 16px; font-weight: 900; text-shadow: 0 4px 30px rgba(0,0,0,.5); }
 .lp-accent { color: #ffd43b; }
 .lp-hero-text p { font-size: clamp(16px, 2vw, 20px); font-weight: 700; line-height: 1.45; margin: 0 0 24px; text-shadow: 0 2px 12px rgba(0,0,0,.6); }
-.lp-cta-row { display: flex; gap: 12px; flex-wrap: wrap; pointer-events: auto; }
+.lp-cta-row { display: flex; gap: 12px; flex-wrap: wrap; pointer-events: auto; position: relative; z-index: 3; }
+.lp-cta-row a, .lp-nav a { -webkit-tap-highlight-color: rgba(255,255,255,.2); touch-action: manipulation; }
 .lp-cta { font-size: 20px; padding: 16px 30px; min-height: 58px; text-decoration: none; box-shadow: 0 10px 30px rgba(43,138,62,.45); }
 .lp-ghost { text-decoration: none; color: #fff; min-height: 58px; font-size: 17px; }
 .lp-loc { margin-top: 22px; font-weight: 800; opacity: .85; font-size: 14px; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
@@ -37,8 +39,8 @@ body.lp { overflow-x: hidden; overflow-y: auto; height: auto; background: #0b2a2
 .lp-sheet { background: #fff; border-radius: 10px; box-shadow: 0 14px 40px rgba(0,0,0,.18); transform: rotate(-2.5deg); padding: 6px; }
 .lp-sheet svg { display: block; width: 100%; height: auto; }
 .lp-tv { display: flex; flex-direction: column; align-items: center; }
-.lp-tv-screen { width: 100%; aspect-ratio: 16 / 9; border: 12px solid #1b1f22; border-radius: 14px; overflow: hidden; position: relative; box-shadow: 0 20px 50px rgba(0,0,0,.3); background: #000; }
-.lp-tv-screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.lp-tv-screen { width: 100%; height: 0; padding-top: 56.25%; aspect-ratio: auto; border: 12px solid #1b1f22; border-radius: 14px; overflow: hidden; position: relative; box-shadow: 0 20px 50px rgba(0,0,0,.3); background: #000; }
+.lp-tv-screen canvas { position: absolute; top: 0; left: 0; right: 0; bottom: 0; inset: 0; width: 100%; height: 100%; display: block; }
 .lp-tv-leg { width: 30%; height: 14px; background: #1b1f22; border-radius: 0 0 10px 10px; }
 .lp-final { text-align: center; }
 .lp-final .lp-cta { display: inline-flex; }
@@ -50,7 +52,7 @@ body.lp { overflow-x: hidden; overflow-y: auto; height: auto; background: #0b2a2
   .lp-split { grid-template-columns: 1fr; }
   .lp-split h2 { text-align: center; } .lp-split > div { text-align: center; }
   .lp-shade { background: linear-gradient(0deg, rgba(6,24,28,.85) 0%, rgba(6,24,28,.55) 55%, rgba(6,24,28,.1) 100%); }
-  .lp-hero-text { top: auto; bottom: 28px; transform: none; right: 16px; }
+  .lp-hero-text { top: auto; bottom: 28px; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); transform: none; right: 16px; }
   .lp-nav-links a:not(.lp-nav-cta) { display: none; }
   .lp-cta { font-size: 18px; padding: 14px 22px; }
 }

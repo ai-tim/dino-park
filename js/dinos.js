@@ -447,19 +447,21 @@ window.DP = window.DP || {};
 
   /** Подвижная «марионетка»: каждая часть растеризуется один раз в canvas (с обрезкой по краям). */
   const rigCache = {};
-  const RES = 1.9; // пикселей на единицу рисунка
-  function rig(id, paletteIndex) {
-    const key = id + ':' + (paletteIndex || 0);
-    if (rigCache[key]) return rigCache[key];
-    const sp = byId[id], pal = sp.palettes[(paletteIndex || 0) % sp.palettes.length];
-    const u = 'r' + id.slice(0, 3) + (paletteIndex || 0);
-    const parts = ART[id].map(p => { const ey = p.s.filter(x => x[0] === 'E').map(x => ({ x: x[1], y: x[2], r: x[3] })); return { n: p.n, role: p.role, off: p.off || 0, amp: p.amp == null ? 1 : p.amp, pivot: p.pivot, canvas: null, eyes: ey.length ? ey : null }; });
-    const raster = (svgText) => new Promise((res) => {
+  // пикселей на единицу рисунка: на телефонах динозавры мельче, а память холстов в Safari ограничена
+  const SMALL = (function () { try { return Math.min(screen.width, screen.height) <= 820 || (window.matchMedia && matchMedia('(pointer: coarse)').matches); } catch (e) { return false; } })();
+  const RES = SMALL ? 1.2 : 1.9;
+  // Растеризация частей — строго по одной, с паузой между ними: главный поток не блокируется
+  // (нажатия на кнопки срабатывают сразу), а память не взлетает от сотни одновременных SVG с фильтрами.
+  let scratch = null, queue = Promise.resolve();
+  const pause = () => new Promise(r => setTimeout(r, 0));
+  function rasterNow(svgText) {
+    return new Promise((res) => {
       const img = new Image();
       img.onload = () => {
         const W = Math.round(VB.w * RES), H = Math.round(VB.h * RES);
-        const c = document.createElement('canvas'); c.width = W; c.height = H;
-        const x = c.getContext('2d'); x.drawImage(img, 0, 0, W, H);
+        if (!scratch) scratch = document.createElement('canvas');
+        if (scratch.width !== W || scratch.height !== H) { scratch.width = W; scratch.height = H; }
+        const c = scratch, x = c.getContext('2d', { willReadFrequently: true }); x.clearRect(0, 0, W, H); x.drawImage(img, 0, 0, W, H);
         // обрезаем прозрачные поля
         let d; try { d = x.getImageData(0, 0, W, H).data; } catch (e) { d = null; }
         let x0 = 0, y0 = 0, x1 = W, y1 = H;
@@ -471,11 +473,24 @@ window.DP = window.DP || {};
         }
         const cc = document.createElement('canvas'); cc.width = x1 - x0; cc.height = y1 - y0;
         cc.getContext('2d').drawImage(c, x0, y0, cc.width, cc.height, 0, 0, cc.width, cc.height);
+        img.onload = img.onerror = null; img.src = '';
         res({ canvas: cc, ox: VB.x + x0 / RES, oy: VB.y + y0 / RES, cw: cc.width / RES, ch: cc.height / RES });
       };
       img.onerror = () => res(null);
       img.src = enc(svgDoc(svgText));
     });
+  }
+  function raster(svgText) {
+    const job = queue.then(() => rasterNow(svgText));
+    queue = job.then(pause, pause);
+    return job;
+  }
+  function rig(id, paletteIndex) {
+    const key = id + ':' + (paletteIndex || 0);
+    if (rigCache[key]) return rigCache[key];
+    const sp = byId[id], pal = sp.palettes[(paletteIndex || 0) % sp.palettes.length];
+    const u = 'r' + id.slice(0, 3) + (paletteIndex || 0);
+    const parts = ART[id].map(p => { const ey = p.s.filter(x => x[0] === 'E').map(x => ({ x: x[1], y: x[2], r: x[3] })); return { n: p.n, role: p.role, off: p.off || 0, amp: p.amp == null ? 1 : p.amp, pivot: p.pivot, canvas: null, eyes: ey.length ? ey : null }; });
     const promise = Promise.all(ART[id].map((p, i) => Promise.all([
       raster(defs(u, pal) + partInner(id, p, 'color', pal, u)),
       raster(defs(u, pal) + `<g filter="url(#${u}paper)">${partInner(id, p, 'edge', pal, u)}</g>`)

@@ -17,14 +17,30 @@ window.DP = window.DP || {};
       this.bg = DP.BG.get('jungle'); this.customImg = null; this.staticCanvas = document.createElement('canvas');
       this.t = 0; this.last = performance.now(); this.showLabels = true; this.camX = 0; this.pointerX = 0; this.tod = this.opts.tod || 'auto';
       canvas.addEventListener('pointermove', (ev) => { const r = canvas.getBoundingClientRect(); this.pointerX = ((ev.clientX - r.left) / Math.max(1, r.width) - 0.5) * 2; });
-      this.resize = this.resize.bind(this); window.addEventListener('resize', this.resize);
-      this.resize();
+      if (this.opts.bg) this.bg = DP.BG.get(this.opts.bg);
+      this._layerPool = []; this._reflPool = []; this._lastFrame = 0;
+      // iOS Safari шлёт resize при каждом скрытии/показе адресной строки — собираем их в один пересчёт
+      this.resize = this.resize.bind(this);
+      this._onResize = () => { clearTimeout(this._rzT); this._rzT = setTimeout(() => this.resize(), 150); };
+      window.addEventListener('resize', this._onResize);
+      window.addEventListener('orientationchange', this._onResize);
+      // невидимую сцену не рисуем (экономим батарею и процессор телефона)
+      this._offscreen = false;
+      if (window.IntersectionObserver) { try { this._io = new IntersectionObserver((en) => { this._offscreen = !en[en.length - 1].isIntersecting; }); this._io.observe(canvas); } catch (e) { this._io = null; } }
+      this.resize(true); Scene.all.push(this);
       this.loop = this.loop.bind(this); requestAnimationFrame(this.loop);
     }
-    resize() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    /** Плотность пикселей: не больше 2 и не больше бюджета пикселей (на телефонах — меньше, чтобы не упереться в лимит памяти Safari) */
+    pickDpr(w, h) {
+      const P = Scene.PERF, cap = Math.min(window.devicePixelRatio || 1, this.opts.maxDpr || P.maxDpr);
+      const budget = this.opts.maxPixels || P.maxPixels;
+      return Math.max(0.75, Math.min(cap, Math.sqrt(budget / Math.max(1, w * h))));
+    }
+    resize(force) {
       const r = this.c.getBoundingClientRect();
       const w = Math.max(1, r.width || window.innerWidth), h = Math.max(1, r.height || window.innerHeight);
+      const dpr = this.pickDpr(w, h);
+      if (force !== true && this.W === w && this.H === h && this.dpr === dpr && this.c.width > 0) return; // размер не изменился — ничего не пересоздаём
       const ow = this.W || w, oh = this.H || h;
       this.W = w; this.H = h; this.dpr = dpr;
       this.c.width = Math.round(w * dpr); this.c.height = Math.round(h * dpr);
@@ -33,9 +49,12 @@ window.DP = window.DP || {};
       this.renderStatic();
     }
     renderStatic() {
-      const s = this.staticCanvas; s.width = this.c.width; s.height = this.c.height;
-      const x = s.getContext('2d'); x.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      this._rendered = this.bg.id + (this._customUrl || '');
       this.layerCanvases = null; this.reflections = null;
+      const s = this.staticCanvas;
+      if (this.bg.layers && this.bg.id !== 'custom') { s.width = s.height = 0; return this.renderLayers(); } // статичный холст не нужен — не держим память
+      s.width = this.c.width; s.height = this.c.height; this.freePool(this._layerPool, 0); this.freePool(this._reflPool, 0);
+      const x = s.getContext('2d'); x.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       if (this.bg.id === 'custom') {
         x.fillStyle = '#123'; x.fillRect(0, 0, this.W, this.H);
         if (this.customImg) {
@@ -44,20 +63,37 @@ window.DP = window.DP || {};
         }
         return;
       }
-      if (!this.bg.layers) { this.bg.drawStatic(x, this.W, this.H); return; }
+      this.bg.drawStatic(x, this.W, this.H);
+    }
+    /** Холст из пула: переиспользуем вместо создания нового (Safari на iPhone освобождает память холстов очень неохотно) */
+    poolCanvas(pool, i, w, h) {
+      const c = pool[i] || (pool[i] = document.createElement('canvas'));
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } else c.getContext('2d').clearRect(0, 0, w, h);
+      const x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+      return c;
+    }
+    freePool(pool, from) { for (let i = from; i < pool.length; i++) { pool[i].width = pool[i].height = 0; } pool.length = Math.min(pool.length, from); }
+    /** Освободить всю память холстов (уход со страницы); вернуть — resize(true) */
+    release() {
+      this.freePool(this._layerPool, 0); this.freePool(this._reflPool, 0);
+      this.staticCanvas.width = this.staticCanvas.height = 0; this.c.width = this.c.height = 0;
+      this.layerCanvases = null; this.reflections = null; this._rendered = null;
+    }
+    renderLayers() {
       // слои локации: каждый в свой холст с запасом по краям для параллакса
       const PADX = 0.05, d = this.dpr, W = this.W, H = this.H;
-      this.layerCanvases = this.bg.layers.map(L => {
-        const c = document.createElement('canvas'); c.width = Math.ceil(W * (1 + 2 * PADX) * d); c.height = Math.ceil(H * d);
+      this.layerCanvases = this.bg.layers.map((L, li) => {
+        const c = this.poolCanvas(this._layerPool, li, Math.ceil(W * (1 + 2 * PADX) * d), Math.ceil(H * d));
         const cx = c.getContext('2d'); cx.setTransform(d, 0, 0, d, W * PADX * d, 0); L.draw.call(L, cx, W, H);
         return { L, c };
       });
       // отражения: всё, что позади водоёма, переворачиваем относительно линии воды
-      this.reflections = [];
+      this.freePool(this._layerPool, this.layerCanvases.length);
+      this.reflections = []; let ri = 0;
       this.layerCanvases.forEach((lc, i) => {
         (lc.L.pools || []).forEach(p => {
           const top = H * p.top, bot = H * p.bottom, hh = Math.max(1, bot - top);
-          const rc = document.createElement('canvas'); rc.width = Math.ceil(W * d); rc.height = Math.ceil(hh * d);
+          const rc = this.poolCanvas(this._reflPool, ri++, Math.ceil(W * d), Math.ceil(hh * d));
           const r = rc.getContext('2d');
           r.save(); r.setTransform(1, 0, 0, -1, 0, top * d); // строка источника y → строка top - y (зеркало у линии воды)
           for (let k = 0; k < i; k++) r.drawImage(this.layerCanvases[k].c, -W * PADX * d, 0);
@@ -68,6 +104,7 @@ window.DP = window.DP || {};
           this.reflections.push({ layer: i, p, c: rc, top, path: DP.BG.poolPath(p, W, H) });
         });
       });
+      this.freePool(this._reflPool, ri);
     }
     /** Время суток: 'auto' (по часам), 'day', 'evening', 'night' */
     setTimeOfDay(mode) { this.tod = mode || 'auto'; }
@@ -86,7 +123,7 @@ window.DP = window.DP || {};
         this._customUrl = customUrl; this.bg = DP.BG.CUSTOM;
         U().loadImage(customUrl).then(img => { this.customImg = img; this.renderStatic(); }).catch(() => {});
       } else { this.bg = DP.BG.get(id === 'custom' ? 'jungle' : id); this._customUrl = null; }
-      this.renderStatic();
+      if (this._rendered !== this.bg.id + (this._customUrl || '')) this.renderStatic(); // тот же фон — не перерисовываем
       this.ents.forEach(e => { const p = this.randomPoint(e.habitat); if (!this.inZone(e)) { e.x = p.x; e.y = p.y; } e.tx = e.x; e.ty = e.y; });
     }
     zone(hab) {
@@ -768,10 +805,29 @@ window.DP = window.DP || {};
     }
     sparkle(x, y) { for (let i = 0; i < 6; i++) this.parts.push({ kind: 'spark', x: x + U().rand(-14, 14), y: y - U().rand(0, 16), vx: U().rand(-14, 14), vy: U().rand(-30, -8), t: 0, life: 0.9, s: U().rand(0.6, 1.2) }); }
     loop(now) {
-      const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now; this.t += dt;
-      if (!this.paused) { this.update(dt); this.draw(); }
       requestAnimationFrame(this.loop);
+      const fps = this.opts.maxFps || Scene.PERF.maxFps;
+      if (fps && now - this._lastFrame < 1000 / fps - 2) return; // ограничение частоты кадров на слабых устройствах
+      this._lastFrame = now;
+      const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
+      if (this._offscreen || document.hidden || !this.c.width) return; // сцену не видно — не тратим батарею
+      this.t += dt;
+      if (!this.paused) { this.update(dt); this.draw(); }
     }
   }
+  // Профиль производительности: телефоны/планшеты (сенсорный экран, маленький экран) и «экономия энергии»
+  Scene.PERF = (function () {
+    const mm = (q) => { try { return !!(window.matchMedia && matchMedia(q).matches); } catch (e) { return false; } };
+    const sw = (window.screen && Math.min(screen.width, screen.height)) || 1024;
+    const mobile = mm('(pointer: coarse)') || sw <= 820 || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+    const reduce = mm('(prefers-reduced-motion: reduce)');
+    const lowMem = navigator.deviceMemory && navigator.deviceMemory <= 2;
+    return { mobile, reduce, maxDpr: mobile ? 2 : 2, maxPixels: mobile ? (lowMem ? 0.9e6 : 1.4e6) : 4.5e6, maxFps: reduce || lowMem ? 30 : 0 };
+  })();
+  Scene.all = [];
+  // уходим со страницы — сразу отдаём память холстов (иначе следующая страница на iPhone может не поместиться в лимит);
+  // вернулись кнопкой «Назад» из кэша — рисуем заново
+  window.addEventListener('pagehide', () => Scene.all.forEach(sc => sc.release()));
+  window.addEventListener('pageshow', (ev) => { if (ev.persisted) Scene.all.forEach(sc => sc.resize(true)); });
   DP.Scene = Scene;
 })();
