@@ -333,15 +333,6 @@ window.DP = window.DP || {};
   }
   /** Ссылка-приглашение: ведёт на главную с кодом пригласившего */
   async function inviteUrl() { const u = new URL('index.html', location.href); u.search = '?ref=' + (await myRef()); return u.toString(); }
-  /** На этом устройстве созданы парки по моей ссылке? (локальный режим) — забрать награду */
-  async function claimLocalInvites(park) {
-    const me = await myRef(), L = ensure(park);
-    let q = []; try { q = JSON.parse(localStorage.getItem('dp_invites') || '[]'); } catch (e) { q = []; }
-    const mine = q.filter(x => x.ref === me && !x.claimed && x.park !== park.id);
-    mine.slice(0, 3).forEach(x => { x.claimed = park.id; L.eggs.rare++; L.stats.invites = (L.stats.invites || 0) + 1; });
-    if (mine.length) localStorage.setItem('dp_invites', JSON.stringify(q.slice(-50)));
-    return Math.min(3, mine.length);
-  }
   function shareReward(park, t) {
     const L = ensure(park), dk = dayKey(t || now());
     if (L.shareDay === dk) return false;
@@ -352,6 +343,6 @@ window.DP = window.DP || {};
     H, D, RARITY, R, EGG, HATS, HAT, TRADES, LEGEND_COST, LEGEND_ALT, MAMMALS, APES, SKILLS, SK, GIFTS, GIFT, GIFT_RULE, ACH,
     ensure, tick, care, canLay, lay, collect, checkAch, total, canPay, pay, addEggs, costText, hatCost, buyHat, hatFree, trade, buyLegend,
     rollRarity, rollGift, hash, dayKey, parseCode, verifyCode, validGift, grant, giftEmoji, giftName, applyInbox, b64u,
-    refKey, myRef, inviteUrl, claimLocalInvites, shareReward
+    refKey, myRef, inviteUrl, shareReward
   };
 })();

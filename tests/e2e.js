@@ -399,6 +399,193 @@ const watch = (page, tag) => {
     ok('Печать в PDF (A4 альбомная)', fs.statSync(path.join(SHOTS, 'coloring-print.pdf')).size > 10000);
   }
 
+  // 13. v3: яйца, обмен, племя, панель нужд, прятки, подарки, достижения, коды, приглашения, зум
+  {
+    const crypto = require('crypto');
+    const KEYFILE = process.env.ADMIN_KEY_FILE || '/workspace/secrets/dinopark-admin-key.txt';
+    let priv = null; // закрытый ключ читается только для подписи тестовых кодов и нигде не печатается
+    try { const line = fs.readFileSync(KEYFILE, 'utf8').split('\n').find(l => l.trim().startsWith('{')); priv = crypto.createPrivateKey({ key: JSON.parse(line), format: 'jwk' }); } catch (e) { priv = null; }
+    const makeCode = (payload, key) => { const b = Buffer.from(JSON.stringify(payload)).toString('base64url'); return `DP1.${b}.${crypto.sign('sha256', Buffer.from('DP1.' + b), { key: key || priv, dsaEncoding: 'ieee-p1363' }).toString('base64url')}`; };
+    const vctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1 });
+    await vctx.addInitScript(() => { if (!sessionStorage.getItem('keepNews')) localStorage.setItem('dp_news_v3', '1'); });
+    const vp = await vctx.newPage(); watch(vp, 'v3');
+    await vp.goto(BASE + '/parks.html'); await vp.waitForTimeout(800);
+    await vp.click('#new-park'); await vp.fill('#np-name', 'Парк v3'); await vp.click('#np-create');
+    await vp.click('#cr-go'); await vp.waitForURL(/park\.html/); await vp.waitForTimeout(1200);
+    await vp.evaluate(() => DP.ui.close());
+    for (const sp of ['trex', 'triceratops', 'stegosaurus', 'parasaurolophus']) { await vp.evaluate(() => window.dpPark.screens.ready()); await vp.$eval(`[data-sp="${sp}"]`, el => el.click()); }
+    await vp.waitForFunction(() => window.dpScene.ents.length >= 4 && window.dpScene.ents.every(e => e.ready), null, { timeout: 20000 });
+    await vp.evaluate(() => DP.ui.close()); await vp.bringToFront();
+    // верхняя панель
+    const hud = await vp.evaluate(() => ['#hud-dinos', '#hud-eggs', '#hud-gifts', '#hud-ach', '#hud-menu'].map(s => { const el = document.querySelector(s); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y }; }));
+    ok('v3: верхняя панель (динозавры, яйца, подарки, достижения, меню) справа сверху', hud.every(h => h && h.y < 80 && h.x > 683), JSON.stringify(hud));
+    // нужды не показываются над головами, есть отдельная панель
+    ok('v3: шкалы нужд не рисуются над динозаврами', await vp.evaluate(() => window.dpScene.opts.showNeeds === false));
+    await vp.click('#hud-dinos'); await vp.waitForTimeout(300);
+    const dn = await vp.evaluate(() => ({ rows: document.querySelectorAll('.dino-row2').length, bars: document.querySelectorAll('.dino-row2 .mb').length, btns: ['#dn-feedall', '#dn-playall', '#dn-sleepall'].every(s => document.querySelector(s)) }));
+    ok('v3: панель «Мои динозавры» с нуждами и кнопками для всех', dn.rows === 4 && dn.bars >= 12 && dn.btns, JSON.stringify(dn));
+    await vp.evaluate(() => { const d = window.dpPark.park.dinos[0]; d.needs = { food: 20, play: 90, sleep: 90, t: Date.now(), sleepFrom: null }; window.dpPark.screens.dinos(); });
+    await vp.waitForTimeout(200);
+    await vp.click(`.dino-row2[data-uid="${await vp.evaluate(() => window.dpPark.park.dinos[0].uid)}"] [data-a="feed"]`); await vp.waitForTimeout(300);
+    ok('v3: кормление одного динозавра из панели (еда падает рядом, он идёт и ест)', await vp.waitForFunction(() => DP.Needs.at(window.dpPark.park.dinos[0]).food > 40, null, { timeout: 20000 }).then(() => true, () => false));
+    await vp.click('#dn-sleepall'); await vp.waitForTimeout(300);
+    const slept = await vp.evaluate(() => window.dpPark.park.dinos.filter(d => DP.Needs.at(d).asleep).length);
+    await vp.click('#dn-wakeall'); await vp.waitForTimeout(300);
+    const awake = await vp.evaluate(() => window.dpPark.park.dinos.filter(d => !DP.Needs.at(d).asleep).length);
+    ok('v3: «Уложить всех» и «Разбудить всех»', slept === 4 && awake === 4, `спят ${slept}, проснулись ${awake}`);
+    await vp.evaluate(() => DP.ui.close());
+    const played = await vp.evaluate(() => window.dpPark.playAll()); await vp.waitForTimeout(1200);
+    ok('v3: «Поиграть со всеми»', played === 4 && await vp.evaluate(() => window.dpScene.balls.length > 0 || window.dpScene.ents.some(e => e.state === 'play')));
+    // нужды закрываются сами
+    const auto = await vp.evaluate(() => { const N = DP.Needs, d = { uid: 'x', added: 0, needs: { food: 20, play: 90, sleep: 90, t: 0, sleepFrom: null } }; const t1 = (20 - N.LOW) / N.RATE.food; const a = N.at(d, (t1 + 60) * 1000).food, b = N.at(d, (t1 + N.AUTO + 10) * 1000).food; return { a: Math.round(a), b: Math.round(b), autoIn: Math.round(N.autoIn(d, 'food', (t1 + 60) * 1000)) }; });
+    ok('v3: голод и скука проходят сами через ~30 мин', auto.a < 30 && auto.b > 60 && auto.autoIn > 1500, JSON.stringify(auto));
+    // яйца: забота → яйцо в гнезде → подобрать
+    const egg = await vp.evaluate(() => { const P = window.dpPark, d = P.park.dinos[0]; d.added = Date.now() - 2 * 3600e3; d.care = 6; d.lastEgg = null; d.needs = DP.Needs.fresh(Date.now()); d.needs.food = 95; const ev = P.lifeTick(); const it = P.park.life.nest.find(n => n.k === 'egg'); return { it, ev: ev.map(e => e.type) }; });
+    ok('v3: ухоженный динозавр несёт яйцо', !!egg.it, JSON.stringify(egg));
+    if (egg.it) {
+      await vp.waitForTimeout(400);
+      const pos = await vp.evaluate((id) => { const s = window.dpScene, p = s.nestPos[id]; return p ? s.toScreen(p.x, p.y - 6) : null; }, egg.it.id);
+      const before = await vp.evaluate(() => Object.values(window.dpPark.park.life.eggs).reduce((a, b) => a + b, 0));
+      if (pos) await vp.mouse.click(pos.x, pos.y); await vp.waitForTimeout(400);
+      const after = await vp.evaluate(() => ({ n: Object.values(window.dpPark.park.life.eggs).reduce((a, b) => a + b, 0), nest: window.dpPark.park.life.nest.length, hud: document.querySelector('#hud-eggn').textContent }));
+      ok('v3: яйцо подбирается касанием и попадает в корзину', after.n === before + 1 && after.nest === 0, JSON.stringify({ pos, before, after }));
+    }
+    // обмен и шапки
+    await vp.evaluate(() => { const L = window.dpPark.park.life; L.eggs.common = 12; L.eggs.rare = 0; window.dpPark.screens.eggs(); }); await vp.waitForTimeout(300);
+    await vp.screenshot({ path: path.join(SHOTS, 'v3-eggs.png') });
+    await vp.click('[data-trade]'); await vp.waitForTimeout(300);
+    const tr = await vp.evaluate(() => ({ ...window.dpPark.park.life.eggs }));
+    ok('v3: обмен 6 обычных → 1 редкое', tr.common === 6 && tr.rare === 1, JSON.stringify(tr));
+    await vp.click('[data-hat="cap"]'); await vp.waitForTimeout(400);
+    ok('v3: шапка куплена за яйца, открыт выбор динозавра', await vp.isVisible('[data-wear]'));
+    const wuid = await vp.evaluate(() => window.dpPark.park.dinos[1].uid);
+    await vp.click(`[data-wear="${wuid}"]`); await vp.waitForTimeout(6000);
+    const hat = await vp.evaluate((u) => ({ hat: window.dpPark.park.dinos.find(d => d.uid === u).hat, ent: (window.dpScene.ent(u) || {}).hat, cap: window.dpPark.park.life.hats.cap, common: window.dpPark.park.life.eggs.common }), wuid);
+    ok('v3: шапку надели динозавру', hat.hat === 'cap' && hat.cap === 1 && hat.common === 3, JSON.stringify(hat));
+    // легендарный
+    await vp.evaluate(() => { window.dpPark.park.life.eggs.epic = 5; window.dpPark.screens.eggs(); }); await vp.waitForTimeout(300);
+    await vp.click('#eg-legend'); await vp.waitForTimeout(300); await vp.click('[data-lsp="trex"]'); await vp.waitForTimeout(1500);
+    const lg = await vp.evaluate(() => ({ n: window.dpPark.park.dinos.filter(d => d.legend).length, epic: window.dpPark.park.life.eggs.epic, ach: window.dpPark.park.life.ach.includes('legend') }));
+    ok('v3: легендарный динозавр за 5 очень редких яиц', lg.n === 1 && lg.epic === 0 && lg.ach, JSON.stringify(lg));
+    // племя и навыки: возраст парка 15 дней
+    const tribe = await vp.evaluate(() => { const P = window.dpPark, L = P.park.life; L.age = 15 * 86400; L.t = Date.now(); P.lifeTick(); L.tribe.forEach(a => { a.xp = 15 * 86400; }); P.lifeTick(); P.lifeTick(); L.tribe.forEach(a => { a.xp = 15 * 86400; }); P.lifeTick(); return { apes: L.tribe.map(a => a.name + ':' + a.sk.length), sk: L.tribe[0] && L.tribe[0].sk, mam: L.mammals.length, crit: window.dpScene.critters ? window.dpScene.critters.length : 0 }; });
+    ok('v3: австралопитеки пришли и выучили навыки (огонь → кормить → кататься → вождь)', tribe.apes.length === 3 && ['fire', 'feed', 'ride', 'chief'].every(s => tribe.sk.includes(s)), JSON.stringify(tribe));
+    ok('v3: зверьки-соседи живут в парке', tribe.mam === 5 && tribe.crit >= 8, `зверьков ${tribe.mam}, на сцене ${tribe.crit}`);
+    await vp.evaluate(() => window.dpPark.screens.tribe()); await vp.waitForTimeout(300);
+    ok('v3: окно «Соседи и племя» с деревом навыков', (await vp.$$eval('.sk', e => e.length)) >= 13);
+    await vp.screenshot({ path: path.join(SHOTS, 'v3-tribe.png') });
+    await vp.evaluate(() => DP.ui.close()); await vp.waitForTimeout(1500);
+    await vp.screenshot({ path: path.join(SHOTS, 'v3-park.png') });
+    // прятки: найти
+    const hid = await vp.evaluate(() => { const e = window.dpScene.ents.find(x => x.habitat === 'ground' && x.state === 'wander'); window.dpScene.food = []; return e && window.dpPark.startHide(e.uid) ? e.uid : null; });
+    await vp.waitForFunction((u) => { const e = window.dpScene.ent(u); return e && e.state === 'hidden'; }, hid, { timeout: 20000 }).catch(() => {});
+    const spot = await vp.evaluate((u) => { const s = window.dpScene, e = s.ent(u); if (!e || !e.hideAt) return null; s.lookAt(e.hideAt.x, s.H / 2, 1, true); return { st: e.state }; }, hid);
+    await vp.waitForTimeout(1200);
+    const sp2 = await vp.evaluate((u) => { const s = window.dpScene, e = s.ent(u); return e && e.hideAt ? s.toScreen(e.hideAt.x, e.hideAt.y - e.hideAt.r * 0.6) : null; }, hid);
+    const found0 = await vp.evaluate(() => window.dpPark.park.life.stats.found || 0);
+    if (sp2) await vp.mouse.click(sp2.x, sp2.y); await vp.waitForTimeout(500);
+    const found = await vp.evaluate((u) => ({ n: window.dpPark.park.life.stats.found || 0, st: window.dpScene.ent(u).state }), hid);
+    ok('v3: прятки — нашли динозавра за кустом касанием', hid && spot && found.n === found0 + 1 && found.st !== 'hidden', JSON.stringify({ hid, spot, sp2, found }));
+    // прятки: не нашли — выходит сам
+    const self = await vp.evaluate(async () => { const s = window.dpScene, e = s.ents.find(x => x.habitat === 'ground' && x.state === 'wander'); if (!e || !s.hide(e.uid, 2)) return 'nohide'; e.state = 'hidden'; e.x = e.hideAt.x; e.y = e.hideAt.y - 3; await new Promise(r => setTimeout(r, 3500)); return e.state; });
+    ok('v3: прятки — если не найти, динозавр выходит сам', self !== 'hidden' && self !== 'nohide', self);
+    // подарок от динозавра за заботу
+    const gift = await vp.evaluate(() => { const P = window.dpPark, d = P.park.dinos[2]; d.aff = 10; d.lastGift = null; d.added = Date.now() - 3 * 3600e3; d.owner = P.owner; d.needs = { food: 30, play: 90, sleep: 90, t: Date.now(), sleepFrom: null }; const r = Math.random; Math.random = () => 0.01; try { const b = DP.Needs.at(d); DP.Needs.feed(d, 30); P.lifeEvents(DP.Life.care(P.park, d, 'feed', b, true)); } finally { Math.random = r; } const it = P.park.life.nest.find(n => n.k === 'gift'); if (it) P.pickup(it); return { it: !!it, gifts: P.park.life.gifts.length }; });
+    await vp.waitForTimeout(500); await vp.evaluate(() => DP.ui.close());
+    ok('v3: динозавр дарит подарок за заботу', gift.it && gift.gifts === 1, JSON.stringify(gift));
+    // достижения
+    await vp.click('#hud-ach'); await vp.waitForTimeout(300);
+    const ach = await vp.evaluate(() => ({ all: document.querySelectorAll('.ach').length, got: document.querySelectorAll('.ach.done').length, life: window.dpPark.park.life.ach.length }));
+    ok('v3: окно достижений (25 штук, часть получена)', ach.all === 25 && ach.got === ach.life && ach.got >= 5, JSON.stringify(ach));
+    await vp.screenshot({ path: path.join(SHOTS, 'v3-achievements.png') });
+    // подарочные коды администратора
+    if (priv) {
+      const code = makeCode({ n: 'e2e' + Date.now(), g: { k: 'eggs', r: 'rare', q: 3 }, m: 'Тестовый подарок' });
+      await vp.evaluate(() => window.dpPark.screens.gifts()); await vp.waitForTimeout(300);
+      const r0 = await vp.evaluate(() => window.dpPark.park.life.eggs.rare);
+      await vp.fill('#gift-code', code); await vp.click('#gift-redeem'); await vp.waitForTimeout(800);
+      const r1 = await vp.evaluate(() => window.dpPark.park.life.eggs.rare);
+      ok('v3: подарочный код с подписью — 3 редких яйца', r1 === r0 + 3, `${r0} → ${r1}`);
+      await vp.waitForTimeout(1500); await vp.evaluate(() => window.dpPark.screens.gifts()); await vp.waitForTimeout(300);
+      await vp.fill('#gift-code', code); await vp.click('#gift-redeem'); await vp.waitForTimeout(800);
+      ok('v3: повторно тот же код не принимается', /уже использован/.test(await vp.textContent('#gift-msg')));
+      const other = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey;
+      await vp.fill('#gift-code', makeCode({ n: 'forged' + Date.now(), g: { k: 'legend' } }, other)); await vp.click('#gift-redeem'); await vp.waitForTimeout(800);
+      ok('v3: поддельный код отклоняется', /ненастоящий/.test(await vp.textContent('#gift-msg')));
+      await vp.screenshot({ path: path.join(SHOTS, 'v3-gifts.png') });
+      // ссылка ?gift= открывает окно подарков с кодом
+      const pid = await vp.evaluate(() => window.dpPark.park.id);
+      const hcode = makeCode({ n: 'link' + Date.now(), g: { k: 'hat', h: 'crown' }, p: pid });
+      await vp.goto(BASE + '/park.html?id=' + pid + '&gift=' + encodeURIComponent(hcode)); await vp.waitForTimeout(1800);
+      ok('v3: ссылка с подарком открывает «Подарки» с кодом', (await vp.inputValue('#gift-code').catch(() => '')) === hcode);
+      await vp.click('#gift-redeem'); await vp.waitForTimeout(800);
+      ok('v3: подарок по ссылке (корона) получен', await vp.evaluate(() => window.dpPark.park.life.hats.crown === 1));
+      // admin.html: импорт ключа, создание кода
+      const ap = await vctx.newPage(); watch(ap, 'admin');
+      await ap.goto(BASE + '/admin.html'); await ap.waitForTimeout(500);
+      const line = fs.readFileSync(KEYFILE, 'utf8').split('\n').find(l => l.trim().startsWith('{'));
+      await ap.fill('#key-in', line); await ap.click('#key-import'); await ap.waitForTimeout(300);
+      const ast = await ap.textContent('#key-st');
+      await ap.selectOption('#g-kind', 'item'); await ap.fill('#g-msg', 'Из админки'); await ap.click('#g-make'); await ap.waitForTimeout(500);
+      const alink = await ap.getAttribute('#g-out a', 'href');
+      ok('v3: admin.html — ключ совпадает с config.js, код создан', /совпадает/.test(ast) && /park\.html\?gift=DP1\./.test(alink || ''), ast.slice(0, 60));
+      await ap.close();
+      await vp.goto(alink.replace('park.html?', 'park.html?id=' + pid + '&')); await vp.waitForTimeout(1500);
+      await vp.click('#gift-redeem'); await vp.waitForTimeout(800);
+      ok('v3: код из admin.html принимается парком', await vp.evaluate(() => window.dpPark.park.life.gifts.some(g => g.adm && g.msg === 'Из админки')));
+      await vp.evaluate(() => DP.ui.close());
+    } else ok('v3: подарочные коды (нет файла ключа — пропуск)', true, 'ADMIN_KEY_FILE не найден');
+    // приглашения и «поделиться»
+    await vp.evaluate(() => { window.__shared = []; navigator.share = (d) => { window.__shared.push(d); return Promise.resolve(); }; window.dpPark.screens.invite(); }); await vp.waitForTimeout(400);
+    const url = await vp.textContent('#inv-url');
+    ok('v3: ссылка-приглашение с кодом', /index\.html\?ref=[0-9a-f]{10}$/.test(url.trim()), url);
+    const c0 = await vp.evaluate(() => window.dpPark.park.life.eggs.common);
+    await vp.click('#inv-repost'); await vp.waitForTimeout(500);
+    await vp.evaluate(() => window.dpPark.screens.invite()); await vp.waitForTimeout(300);
+    await vp.click('#inv-repost'); await vp.waitForTimeout(500);
+    const c1 = await vp.evaluate(() => ({ eggs: window.dpPark.park.life.eggs.common, shared: window.__shared.length }));
+    ok('v3: награда за «поделиться» — раз в день', c1.eggs === c0 + 1 && c1.shared === 2, JSON.stringify({ c0, c1 }));
+    // друг открыл ссылку на своём устройстве и создал парк → редкое яйцо; пригласившему — награда через сервер
+    const myId = await vp.evaluate(() => window.dpPark.park.id);
+    {
+      const fctx = await browser.newContext({ viewport: { width: 1366, height: 768 } }); await fctx.addInitScript(() => localStorage.setItem('dp_news_v3', '1'));
+      const fp = await fctx.newPage(); watch(fp, 'friend');
+      await fp.goto(url.trim()); await fp.waitForTimeout(800);
+      await fp.goto(BASE + '/parks.html'); await fp.waitForTimeout(600);
+      await fp.click('#new-park'); await fp.fill('#np-name', 'Парк друга'); await fp.click('#np-create');
+      await fp.click('#cr-go'); await fp.waitForURL(/park\.html/); await fp.waitForTimeout(2500);
+      const fr = await fp.evaluate(() => ({ rare: window.dpPark.park.life.eggs.rare, refBy: window.dpPark.park.life.refBy, sent: window.dpPark.park.life.refSent }));
+      ok('v3: новый парк по приглашению получает редкое яйцо', fr.rare === 1 && /^[0-9a-f]{10}$/.test(fr.refBy || '') && (!SERVER || fr.sent === 1), JSON.stringify(fr));
+      // своя же ссылка на своём устройстве награды не даёт
+      await vp.goto(url.trim()); await vp.waitForTimeout(600); await vp.goto(BASE + '/parks.html'); await vp.waitForTimeout(400);
+      ok('v3: своя ссылка на своём устройстве не засчитывается', await vp.evaluate(() => { const p = DP.store.create('Сам себе'); const r = !(p.life && p.life.refBy); DP.store.remove && DP.store.remove(p.id); return r; }));
+      await fctx.close();
+    }
+    if (SERVER) {
+      await vp.goto(BASE + '/park.html?id=' + myId); await vp.waitForTimeout(3000);
+      const inv = await vp.evaluate(() => window.dpPark.park.life.stats.invites || 0);
+      ok('v3: пригласивший получает награду за друга (сервер)', inv === 1, 'приглашено: ' + inv);
+    } else { await vp.goto(BASE + '/park.html?id=' + myId); await vp.waitForTimeout(1500); }
+    await vp.evaluate(() => DP.ui.close());
+    // крупный план и зум
+    const cz = await vp.evaluate(async () => { const P = window.dpPark, u = window.dpScene.ents[0].uid; P.closeUp(u); await new Promise(r => setTimeout(r, 1500)); const z = window.dpScene.cam.z; const bar = getComputedStyle(document.querySelector('#zoombar')).display !== 'none'; window.dpScene.resetZoom(); await new Promise(r => setTimeout(r, 1500)); return { z, bar, z2: window.dpScene.cam.z }; });
+    ok('v3: крупный план динозавра и возврат', cz.z > 1.8 && cz.bar && cz.z2 < 1.05, JSON.stringify(cz));
+    // поддержка: форма, если нет Telegram
+    await vp.evaluate(() => window.dpPark.screens.support()); await vp.waitForTimeout(300);
+    const hasTg = await vp.$('#sp-tg');
+    if (hasTg) ok('v3: поддержка — ссылка на Telegram', /^https:\/\/t\.me\//.test(await hasTg.getAttribute('href')));
+    else {
+      await vp.fill('#sp-text', 'Тест обратной связи из e2e'); await vp.click('#sp-send'); await vp.waitForTimeout(500);
+      ok('v3: поддержка — форма сохраняет сообщение', await vp.evaluate(() => JSON.parse(localStorage.getItem('dp_feedback') || '[]').some(x => /e2e/.test(x.text))));
+    }
+    // «Что нового в парке» — показывается при входе
+    await vp.evaluate(() => { sessionStorage.setItem('keepNews', '1'); localStorage.removeItem('dp_news_v3'); });
+    await vp.reload(); await vp.waitForTimeout(1800);
+    ok('v3: «Что нового в парке» открывается при входе', await vp.isVisible('.news'));
+    await vp.screenshot({ path: path.join(SHOTS, 'v3-news.png') });
+    await vctx.close();
+  }
+
   ok('Нет ошибок JS в консоли', errors.length === 0, errors.join(' | '));
   await browser.close();
   const failed = results.filter(r => !r.pass).length;

@@ -42,7 +42,7 @@
     onDuo: (a, b) => { [a, b].forEach(x => { const d = dino(x.uid); if (d) N.play(d, 12); }); park.life.stats.duo = (park.life.stats.duo || 0) + 1; lifeEvents(Life.checkAch(park)); commitSoon(); },
     onHide: (e, found) => {
       const d = dino(e.uid); if (!d) return;
-      if (found) { park.life.stats.found = (park.life.stats.found || 0) + 1; careFor(d, 'found', null); showHint(`🎉 Нашёл! ${dinoName(d)} очень рад`, 3500); }
+      if (found) { careFor(d, 'found', null); /* careFor считает stats.found */ showHint(`🎉 Нашёл! ${dinoName(d)} очень рад`, 3500); }
       else showHint(`🙈 ${dinoName(d)} вышел сам — в следующий раз найди быстрее!`, 4000);
       lifeEvents(Life.checkAch(park)); commitSoon();
     },
@@ -549,7 +549,7 @@
     return { done, url, how, kind };
   }
   async function claimInvites() {
-    let n = await Life.claimLocalInvites(park);
+    let n = 0; // награда пригласившему — только через сервер: на одном устройстве её легко накрутить
     if (Y.mode === 'server' && !DEMO) { try { const r = await Y.call({ t: 'refclaim', key: Life.refKey() }); const k = Math.max(0, Math.min(10, (r && r.n) | 0)); if (k) { park.life.eggs.rare += k; park.life.stats.invites = (park.life.stats.invites || 0) + k; n += k; } } catch (e) { /* нет сервера */ } }
     if (n) { say(`💌 По твоей ссылке пришли друзья: ${n}! Награда: ${n} 💎`, 5000); lifeEvents(Life.checkAch(park)); commit(); }
     return n;
@@ -754,7 +754,7 @@
         UI.show(`${UI.head('💌 Позвать друга и поделиться', { back: true, sub: 'Награды яйцами за друзей и за репост' })}
           <div class="tv-split">
             <div class="tv-box"><h3><span class="num">1</span>Пригласи друга</h3>
-              <p class="note">Друг откроет ссылку и создаст свой парк — вы оба получите 💎 редкое яйцо.${Y.mode === 'server' ? ' Награда проверяется на сервере.' : ' Без сервера награда засчитывается на этом устройстве.'}</p>
+              <p class="note">Друг откроет ссылку и создаст свой парк — вы оба получите 💎 редкое яйцо.${Y.mode === 'server' ? ' Награда проверяется на сервере.' : ' Подарок другу — сразу; награда тебе — когда парк работает через сервер (там её нельзя подделать).'}</p>
               <div class="qr">${qr(url)}</div><div class="url" id="inv-url">${U.esc(url)}</div>
               <div class="btn-row"><button class="btn green" id="inv-share">📤 Отправить приглашение</button><button class="btn" id="inv-copy">🔗 Скопировать</button></div>
               <p class="note">Друзей по твоей ссылке: <b>${L.stats.invites || 0}</b></p></div>

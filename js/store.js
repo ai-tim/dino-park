@@ -49,7 +49,6 @@ window.DP = window.DP || {};
       if (ref && /^[0-9a-f]{10}$/.test(ref) && !ls.getItem('dp_ref_used') && ref !== ls.getItem('dp_ref')) {
         park.life = { eggs: { common: 0, rare: 1, epic: 0, legend: 0 }, refBy: ref, stats: {} };
         ls.setItem('dp_ref_used', park.id);
-        try { const q = JSON.parse(ls.getItem('dp_invites') || '[]'); q.push({ ref, park: park.id, t: Date.now() }); ls.setItem('dp_invites', JSON.stringify(q.slice(-50))); } catch (e) { /* ignore */ }
       }
       S.save(park); S.addMine(park.id); return park;
     },
