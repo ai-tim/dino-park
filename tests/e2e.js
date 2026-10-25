@@ -587,6 +587,21 @@ const watch = (page, tag) => {
     await vctx.close();
   }
 
+  // 3D и запасной 2D: обычный браузер рисует парк в WebGL; без WebGL (старый телефон, отключено) — прежняя 2D-сцена
+  {
+    const gctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await gctx.addInitScript(() => { localStorage.setItem('dp_news_v3', '1'); if (/[?&]nogl=1/.test(location.search) || location.hash === '#nogl') { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, o) { return /webgl/.test(t) ? null : g.call(this, t, o); }; } });
+    const gp = await gctx.newPage(); watch(gp, '3d');
+    const probe = async (hash) => { await gp.goto(BASE + '/park.html?demo=1' + hash); await gp.waitForFunction(() => window.dpScene && window.dpScene.ents.length && window.dpScene.ents.every(e => e.ready), null, { timeout: 30000 }); await gp.waitForTimeout(800);
+      return gp.evaluate(() => { const s = window.dpScene; return { is3d: !!s.is3d, webgl: DP.can3D(), drawn: s.ents.filter(e => e._rect && e._rect.w > 5).length, px: s.samplePixels ? s.samplePixels(6) : null }; }); };
+    const g3 = await probe('');
+    if (g3.webgl) ok('3D: парк рисуется в WebGL, кадр не пустой', g3.is3d && g3.drawn > 0 && g3.px && g3.px.nonBlack > 30, JSON.stringify(g3));
+    else ok('3D: (WebGL недоступен в этом браузере — проверен только 2D)', true);
+    await gp.goto('about:blank'); const g2 = await probe('&nogl=1#nogl');
+    ok('Без WebGL парк автоматически рисуется в 2D', !g2.is3d && !g2.webgl && g2.drawn > 0, JSON.stringify(g2));
+    await gctx.close();
+  }
+
   ok('Нет ошибок JS в консоли', errors.length === 0, errors.join(' | '));
   await browser.close();
   const failed = results.filter(r => !r.pass).length;

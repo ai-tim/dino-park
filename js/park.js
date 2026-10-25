@@ -23,7 +23,7 @@
     if (!park) { location.replace('parks.html' + (pid ? '?code=' + encodeURIComponent(pid) : '')); return; }
     S.setCurrent(park.id); S.addMine(park.id);
     const keep = new URLSearchParams(); keep.set('id', park.id);
-    ['fast', 'tod', 'speed'].forEach(k => { if (U.param(k)) keep.set(k, U.param(k)); });
+    ['fast', 'tod', 'speed', 'r'].forEach(k => { if (U.param(k)) keep.set(k, U.param(k)); });
     history.replaceState(null, '', 'park.html?' + keep.toString()); // PIN из адресной строки убираем
   }
   S.normalize(park); Life.ensure(park);
