@@ -44,6 +44,13 @@ window.DP = window.DP || {};
     },
     create(name) {
       const park = { id: DP.util.parkId(), pin: DP.util.pin(), name: (name || '').trim() || 'Парк', bg: 'jungle', view: 'jungle', customBg: null, customLoc: null, dinos: [], created: Date.now(), updated: Date.now() };
+      // пришли по ссылке-приглашению: в новом парке ждёт редкое яйцо, а пригласившему — награда
+      const ref = ls.getItem('dp_ref_from');
+      if (ref && /^[0-9a-f]{10}$/.test(ref) && !ls.getItem('dp_ref_used') && ref !== ls.getItem('dp_ref')) {
+        park.life = { eggs: { common: 0, rare: 1, epic: 0, legend: 0 }, refBy: ref, stats: {} };
+        ls.setItem('dp_ref_used', park.id);
+        try { const q = JSON.parse(ls.getItem('dp_invites') || '[]'); q.push({ ref, park: park.id, t: Date.now() }); ls.setItem('dp_invites', JSON.stringify(q.slice(-50))); } catch (e) { /* ignore */ }
+      }
       S.save(park); S.addMine(park.id); return park;
     },
     // Временные 5-значные коды для ТВ в локальном режиме

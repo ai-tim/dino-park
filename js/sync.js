@@ -101,6 +101,8 @@ window.DP = window.DP || {};
       if (bc) bc.postMessage({ t: 'park', id: park.id, park });
       if (mode === 'server') send({ t: 'update', id: park.id, pin: park.pin, park });
     },
+    /** Произвольный запрос к серверу (приглашения, подарочные коды, обратная связь). В локальном режиме — ошибка. */
+    call(m, timeout) { if (mode !== 'server') return Promise.reject(new Error('Нет сервера')); return request(m, timeout); },
     sendEvent(park, ev) {
       if (bc) bc.postMessage({ t: 'event', id: park.id, ev });
       if (mode === 'server') send({ t: 'event', id: park.id, pin: park.pin, ev });

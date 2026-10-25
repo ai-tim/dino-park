@@ -219,7 +219,8 @@ const watch = (page, tag) => {
   const tvState = await tv.evaluate(() => ({ n: window.dpScene.ents.length, food: window.dpScene.food.length, toast: (document.querySelector('#tvtoast') || {}).textContent || '' }));
   ok('ТВ получил нового динозавра и корм в реальном времени', tvState.n === 10 && tvState.food > 0, JSON.stringify(tvState));
   ok('ТВ: «Покормить всех» объявляется', /Обед/.test(tvState.toast), tvState.toast);
-  // 9. Кормление на основном экране → скриншот
+  // 9. Кормление на основном экране → скриншот (страница — на переднем плане, иначе headless Chrome душит её до 2 кадров/с)
+  await page.bringToFront();
   await page.waitForTimeout(2600);
   const eating = await page.evaluate(() => window.dpScene.ents.filter(e => e.state !== 'wander').length);
   ok('Динозавры бегут к корму / едят', eating > 0, 'заняты едой: ' + eating);
@@ -306,6 +307,7 @@ const watch = (page, tag) => {
 
 
   // 11b. Хаотичное блуждание: позиции меняются, направления разные, нет «слипания»
+  await page.bringToFront();
   await page.evaluate(() => { DP.ui.close(); const s = window.dpScene; s.food = []; s.ents.forEach(e => { e.state = 'wander'; e.food = null; e.enter = 0; }); });
   const mv = await page.evaluate(async () => {
     const s = window.dpScene, bw = s.baseW(), N = 40, samples = [];

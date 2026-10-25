@@ -14,6 +14,7 @@
     S.normalize(p);
     const custom = p.customBg && p.customLoc === p.view, jump = shownView !== p.view; shownView = p.view;
     scene.setBackground(custom ? 'custom' : p.view, p.customBg); scene.setDinos(here(p), jump);
+    if (DP.Life && scene.setLife) scene.setLife(DP.Life.ensure(p), p);
     $('#tvname').textContent = '🦖 ' + p.name + ' · ' + locName(p.view) + ' · ' + U.dinoCount(here(p).length);
   }
   let toastT = null;
@@ -21,7 +22,7 @@
   function show(p) {
     park = p;
     $('#join').classList.add('hidden'); $('#park').classList.remove('hidden'); $('#bar').classList.remove('hidden'); $('#tvname').classList.remove('hidden');
-    if (!scene) { scene = new DP.Scene($('#park'), { entrance: false, tod: U.param('tod') || 'auto' }); window.dpScene = scene; }
+    if (!scene) { scene = new DP.Scene($('#park'), { entrance: false, tod: U.param('tod') || 'auto', showNeeds: false, needHint: true }); window.dpScene = scene; }
     scene.resize(); render(p); scene.opts.entrance = true;
     sessionStorage.setItem('dp_tv', JSON.stringify({ id: p.id, token: Y.tvToken || null }));
     wake();
@@ -51,7 +52,7 @@
   let wt = null;
   function wake() { $('#bar').classList.remove('fade'); $('#tvname').classList.remove('fade'); clearTimeout(wt); wt = setTimeout(() => { $('#bar').classList.add('fade'); $('#tvname').classList.add('fade'); }, 4000); }
   ['mousemove', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, () => { if (park) wake(); }));
-  $('#park').addEventListener('click', (e) => { wake(); const d = scene && scene.hit(e.offsetX, e.offsetY); if (d) scene.jump(d.uid); });
+  $('#park').addEventListener('click', (e) => { wake(); const d = scene && scene.hitScreen(e.offsetX, e.offsetY); if (d) scene.jump(d.uid); });
 
   const code = U.param('code');
   if (code) { $('#code').value = code; join(code); }

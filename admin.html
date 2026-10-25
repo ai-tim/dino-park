@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Динопарк — подарки (админ)</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { overflow: auto; background: #0b2a2e; color: #eafff5; font-family: Nunito, system-ui, sans-serif; }
+    .adm { max-width: 760px; margin: 0 auto; padding: 18px 14px 60px; }
+    .adm h1 { font-size: 24px; margin: 6px 0 4px; } .adm h2 { font-size: 18px; margin: 0 0 8px; }
+    .adm section { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12); border-radius: 16px; padding: 14px; margin: 14px 0; }
+    .adm label { display: block; font-weight: 700; margin: 8px 0 4px; font-size: 14px; }
+    .adm input, .adm select, .adm textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.2); background: rgba(0,0,0,.25); color: inherit; font: inherit; }
+    .adm textarea { min-height: 70px; font-family: ui-monospace, monospace; font-size: 12px; }
+    .adm .row { display: flex; gap: 10px; flex-wrap: wrap; } .adm .row > * { flex: 1 1 140px; }
+    .adm .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .adm .st { font-size: 14px; opacity: .9; margin: 6px 0; } .adm .warn { color: #ffd27a; } .adm .ok { color: #8ff0b5; } .adm .bad { color: #ff9a9a; }
+    .adm .code { word-break: break-all; font-family: ui-monospace, monospace; font-size: 11px; background: rgba(0,0,0,.3); padding: 8px; border-radius: 8px; margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <main class="adm">
+    <h1>🎁 Подарки игрокам</h1>
+    <div class="st">Служебная страница. Ключ подписи хранится только в этом браузере (localStorage). Не открывай её на чужих устройствах.</div>
+
+    <section>
+      <h2>🔑 Ключ подписи</h2>
+      <div class="st" id="key-st">…</div>
+      <div class="btns">
+        <button class="btn small" id="key-gen">Создать новый ключ</button>
+        <button class="btn small ghost" id="key-export">Экспорт (скачать)</button>
+        <button class="btn small ghost" id="key-forget">Удалить из браузера</button>
+      </div>
+      <label for="key-in">Импорт закрытого ключа (JWK)</label>
+      <textarea id="key-in" placeholder='{"kty":"EC","crv":"P-256",...}' autocomplete="off" spellcheck="false"></textarea>
+      <div class="btns"><button class="btn small" id="key-import">Импортировать</button></div>
+      <div class="st" id="key-pub-wrap" hidden>Открытый ключ для <b>js/config.js</b> → ADMIN_PUBLIC_KEY:<div class="code" id="key-pub"></div></div>
+    </section>
+
+    <section>
+      <h2>🎟️ Подарочные коды</h2>
+      <div class="row">
+        <div><label for="g-kind">Подарок</label>
+          <select id="g-kind">
+            <option value="eggs">Яйца</option><option value="hat">Шапка</option><option value="legend">Легендарный динозавр</option><option value="item">Сувенир (эмодзи + название)</option>
+          </select></div>
+        <div data-for="eggs"><label for="g-r">Редкость</label>
+          <select id="g-r"><option value="common">Обычные 🥚</option><option value="rare">Редкие 💎</option><option value="epic">Очень редкие 🔮</option><option value="legend">Легендарные 🌟</option></select></div>
+        <div data-for="eggs"><label for="g-q">Сколько (1–50)</label><input id="g-q" type="number" min="1" max="50" value="3"></div>
+        <div data-for="hat" hidden><label for="g-h">Шапка</label>
+          <select id="g-h"><option value="cap">Кепка</option><option value="bow">Бантик</option><option value="flower">Цветочек</option><option value="sunhat">Шляпка</option><option value="helmet">Каска</option><option value="grad">Шапочка учёного</option><option value="tophat">Цилиндр</option><option value="crown">Корона</option></select></div>
+        <div data-for="item" hidden><label for="g-e">Эмодзи</label><input id="g-e" maxlength="8" value="🧸"></div>
+        <div data-for="item" hidden><label for="g-t">Название</label><input id="g-t" maxlength="40" value="Плюшевый динозаврик"></div>
+      </div>
+      <label for="g-msg">Сообщение (необязательно)</label><input id="g-msg" maxlength="140" placeholder="Спасибо, что играешь!">
+      <div class="row">
+        <div><label for="g-park">Только для парка (код, необязательно)</label><input id="g-park" maxlength="16" placeholder="любой парк"></div>
+        <div><label for="g-days">Действует дней (0 — бессрочно)</label><input id="g-days" type="number" min="0" max="365" value="30"></div>
+        <div><label for="g-n">Сколько кодов</label><input id="g-n" type="number" min="1" max="50" value="1"></div>
+      </div>
+      <div class="btns"><button class="btn" id="g-make">Создать коды</button><button class="btn small ghost" id="g-copy" hidden>Скопировать все ссылки</button></div>
+      <div id="g-out"></div>
+    </section>
+
+    <section>
+      <h2>📡 Выдать сразу через сервер</h2>
+      <div class="st">Если парк работает на своём сервере (server/server.js с переменной ADMIN_TOKEN) — подарок придёт в парк сам, без кода.</div>
+      <div class="row">
+        <div><label for="s-url">Адрес сервера</label><input id="s-url" placeholder="https://мой-сервер"></div>
+        <div><label for="s-token">ADMIN_TOKEN</label><input id="s-token" type="password" autocomplete="off"></div>
+      </div>
+      <label for="s-parks">Коды парков через запятую или * для всех</label><input id="s-parks" placeholder="abc123, def456">
+      <div class="btns"><button class="btn" id="s-send">Отправить подарок (из формы выше)</button></div>
+      <div class="st" id="s-msg"></div>
+    </section>
+  </main>
+  <script src="js/config.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

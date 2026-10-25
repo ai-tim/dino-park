@@ -10,6 +10,11 @@
  *  - запись файлов атомарная (временный файл → rename);
  *  - кривые адреса и битый JSON не роняют сервер.
  *
+ *  - «жизнь парка» (яйца, племя, подарки) проверяется по схеме и с лимитами размера;
+ *  - подарочные коды проверяются открытым ключом ECDSA из js/config.js, каждый код — один раз;
+ *  - приглашения и обратная связь — с лимитами по IP; админ-выдача подарков — POST /api/admin/gift
+ *    с заголовком Authorization: Bearer $ADMIN_TOKEN (если ADMIN_TOKEN не задан — выключено).
+ *
  * Запуск: cd server && npm install && npm start   (порт: PORT, по умолчанию 8080)
  * Copyright (c) 2026 Юрий Власенко. Все права защищены.
  */
@@ -18,6 +23,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const vm = require('vm');
 const { WebSocketServer } = require('ws');
 
 const env = (k, d) => (process.env[k] != null && process.env[k] !== '' ? Number(process.env[k]) : d);
@@ -35,7 +41,10 @@ const DEFAULTS = {
   trashDays: env('TRASH_DAYS', 30),
   tvTtl: env('TV_TTL_MS', 5 * 60 * 1000),
   trustProxy: process.env.TRUST_PROXY === '1',
-  scryptN: env('SCRYPT_N', 16384)
+  scryptN: env('SCRYPT_N', 16384),
+  adminToken: process.env.ADMIN_TOKEN || '',
+  maxFeedbackPerHour: env('MAX_FEEDBACK_PER_HOUR', 5),
+  maxRefPerHour: env('MAX_REF_PER_HOUR', 10)
 };
 
 const MIME = {
@@ -46,7 +55,7 @@ const MIME = {
   '.webmanifest': 'application/manifest+json'
 };
 // Белый список того, что можно отдавать по HTTP
-const PAGES = new Set(['/index.html', '/park.html', '/tv.html', '/viewer.html', '/coloring.html', '/parks.html', '/LICENSE', '/robots.txt']);
+const PAGES = new Set(['/index.html', '/park.html', '/tv.html', '/viewer.html', '/coloring.html', '/parks.html', '/admin.html', '/LICENSE', '/robots.txt']);
 const PREFIXES = ['/css/', '/js/', '/assets/', '/legacy/'];
 const ALIASES = { '/': '/index.html', '/tv': '/tv.html', '/tv/': '/tv.html', '/park': '/park.html', '/parks': '/parks.html', '/coloring': '/coloring.html', '/legacy': '/legacy/index.html', '/legacy/': '/legacy/index.html' };
 
@@ -56,6 +65,48 @@ const SLUG_RE = /^[a-z][a-z0-9-]{1,23}$/;
 const UID_RE = /^[a-zA-Z0-9_-]{3,32}$/;
 const IMG_NAME_RE = /^[a-f0-9]{24}\.(png|jpg|webp)$/;
 const EVENT_TYPES = new Set(['feed', 'jump', 'play', 'sleep', 'sparkle', 'voice', 'travel', 'wake', 'pet']);
+const RARITIES = ['common', 'rare', 'epic', 'legend'];
+const HAT_IDS = ['cap', 'bow', 'flower', 'sunhat', 'helmet', 'grad', 'tophat', 'crown'];
+const REF_RE = /^[0-9a-f]{10}$/;
+
+/** Подарок администратора: допустимые виды (как в js/life.js) */
+function validGift(g) {
+  if (!g || typeof g !== 'object' || Array.isArray(g)) return false;
+  if (g.k === 'eggs') return RARITIES.includes(g.r) && Number.isInteger(g.q) && g.q > 0 && g.q <= 50;
+  if (g.k === 'hat') return HAT_IDS.includes(g.h);
+  if (g.k === 'legend') return true;
+  if (g.k === 'item') return typeof g.e === 'string' && g.e.length <= 8 && typeof g.t === 'string' && g.t.length <= 40;
+  return false;
+}
+function cleanGift(g) {
+  if (g.k === 'eggs') return { k: 'eggs', r: g.r, q: g.q };
+  if (g.k === 'hat') return { k: 'hat', h: g.h };
+  if (g.k === 'item') return { k: 'item', e: g.e, t: g.t };
+  return { k: 'legend' };
+}
+/** Открытый ключ для подарочных кодов — из js/config.js (тот же, что у клиентов) */
+function loadPublicKey(root) {
+  try {
+    const ctx = { window: {} }; vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(root, 'js', 'config.js'), 'utf8'), ctx, { timeout: 200 });
+    const jwk = ctx.window.DP_CONFIG && ctx.window.DP_CONFIG.ADMIN_PUBLIC_KEY;
+    if (!jwk || jwk.d) return null; // закрытый ключ сюда попадать не должен
+    return crypto.createPublicKey({ key: { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y }, format: 'jwk' });
+  } catch (e) { return null; }
+}
+/** Проверка подарочного кода DP1.<payload>.<подпись P-256 в формате r||s> */
+function verifyGiftCode(code, pubKey, parkId) {
+  if (!pubKey) throw new Error('Подарочные коды не настроены');
+  const m = /^DP1\.([A-Za-z0-9_-]{8,700})\.([A-Za-z0-9_-]{80,90})$/.exec(String(code || '').replace(/\s+/g, ''));
+  if (!m) throw new Error('Код не похож на подарочный');
+  const sig = Buffer.from(m[2], 'base64url');
+  if (sig.length !== 64 || !crypto.verify('sha256', Buffer.from('DP1.' + m[1]), { key: pubKey, dsaEncoding: 'ieee-p1363' }, sig)) throw new Error('Неверная подпись — код ненастоящий');
+  let p; try { p = JSON.parse(Buffer.from(m[1], 'base64url').toString('utf8')); } catch (e) { throw new Error('Код повреждён'); }
+  if (!p || typeof p.n !== 'string' || !/^[A-Za-z0-9_-]{6,40}$/.test(p.n) || !validGift(p.g)) throw new Error('Код повреждён');
+  if (p.e && Date.now() > p.e) throw new Error('Срок действия кода истёк');
+  if (p.p && p.p !== parkId) throw new Error('Этот код для другого парка');
+  return p;
+}
 
 // ---------- утилиты ----------
 function writeAtomic(file, data) {
@@ -108,7 +159,9 @@ function createServer(opts) {
   const L = {
     pinIp: new Limiter(5, 30 * 1000, 60 * 60 * 1000),
     pinPark: new Limiter(25, 60 * 1000, 60 * 60 * 1000),
-    tvIp: new Limiter(8, 30 * 1000, 60 * 60 * 1000)
+    tvIp: new Limiter(8, 30 * 1000, 60 * 60 * 1000),
+    redeemIp: new Limiter(10, 30 * 1000, 60 * 60 * 1000),
+    admin: new Limiter(5, 60 * 1000, 60 * 60 * 1000)
   };
   const creates = new Map();    // ip -> [timestamps]
 
@@ -194,9 +247,38 @@ function createServer(opts) {
         added: num(d.added, Date.now()),
         owner: typeof d.owner === 'string' && /^[a-z0-9]{6,32}$/.test(d.owner) ? d.owner : undefined,
         loc: typeof d.loc === 'string' && SLUG_RE.test(d.loc) ? d.loc : undefined,
-        needs: cleanNeeds(d.needs)
+        needs: cleanNeeds(d.needs),
+        care: clamp(Math.floor(num(d.care, 0)), 0, 30), aff: clamp(Math.floor(num(d.aff, 0)), 0, 40),
+        eggN: clamp(Math.floor(num(d.eggN, 0)), 0, 1e6), lastEgg: d.lastEgg == null ? undefined : num(d.lastEgg, undefined),
+        giftN: clamp(Math.floor(num(d.giftN, 0)), 0, 1e6), lastGift: d.lastGift == null ? undefined : num(d.lastGift, undefined),
+        hat: HAT_IDS.includes(d.hat) ? d.hat : undefined, legend: d.legend === true ? true : undefined
       });
     }
+    out.life = cleanLife(src.life);
+    return out;
+  }
+  /** «Жизнь парка»: только известные поля, с ограничением длины. inbox ведёт только сервер. */
+  function cleanLife(l) {
+    if (!l || typeof l !== 'object' || Array.isArray(l)) return undefined;
+    const arr = (v, max, f) => (Array.isArray(v) ? v.slice(0, max).map(f).filter(x => x != null) : []);
+    const slug = (v) => (typeof v === 'string' && /^[a-z0-9_-]{1,24}$/i.test(v) ? v : null);
+    const int = (v, max) => clamp(Math.floor(num(v, 0)), 0, max);
+    const nums = (o, keys, max) => { const r = {}; if (o && typeof o === 'object') Object.keys(o).slice(0, 60).forEach(k => { if ((!keys || keys.includes(k)) && /^[a-z0-9_]{1,16}$/i.test(k) && typeof o[k] === 'number' && isFinite(o[k])) r[k] = clamp(o[k], 0, max); }); return r; };
+    const out = {
+      eggs: {}, nest: arr(l.nest, 40, n => n && typeof n === 'object' && slug(n.id) && UID_RE.test(String(n.uid)) && (n.k === 'egg' || n.k === 'gift')
+        ? { id: n.id, k: n.k, uid: n.uid, r: RARITIES.includes(n.r) ? n.r : undefined, g: slug(n.g) || undefined, t: num(n.t, Date.now()) } : null),
+      tribe: arr(l.tribe, 6, a => a && typeof a === 'object' && slug(a.id) ? { id: a.id, name: str(a.name, 12), xp: num(a.xp, 0), sk: arr(a.sk, 20, slug), t: num(a.t, Date.now()) } : null),
+      mammals: arr(l.mammals, 10, a => a && typeof a === 'object' && slug(a.id) ? { id: a.id, kind: slug(a.kind) || 'shrew', name: str(a.name, 20), xp: num(a.xp, 0), t: num(a.t, Date.now()) } : null),
+      gifts: arr(l.gifts, 200, g => g && typeof g === 'object' ? { g: slug(g.g) || undefined, e: str(g.e, 8) || undefined, name: str(g.name, 40) || undefined, msg: str(g.msg, 140) || undefined, from: str(g.from, 40) || undefined, uid: typeof g.uid === 'string' && UID_RE.test(g.uid) ? g.uid : undefined, adm: g.adm ? 1 : undefined, t: num(g.t, Date.now()) } : null),
+      redeemed: arr(l.redeemed, 200, v => (typeof v === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(v) ? v : null)),
+      ach: arr(l.ach, 60, slug), ack: arr(l.ack, 100, slug), locs: arr(l.locs, 10, slug), inbox: [],
+      stats: nums(l.stats, null, 1e9), acc: nums(l.acc, null, 1e9), hats: nums(l.hats, HAT_IDS, 99), tokens: nums(l.tokens, ['legend'], 10),
+      age: clamp(num(l.age, 0), 0, 1e10), t: num(l.t, Date.now()),
+      day: str(l.day, 12) || undefined, shareDay: str(l.shareDay, 12) || undefined,
+      refBy: typeof l.refBy === 'string' && REF_RE.test(l.refBy) ? l.refBy : undefined, refSent: l.refSent ? 1 : undefined
+    };
+    RARITIES.forEach(r => { out.eggs[r] = int(l.eggs && l.eggs[r], 100000); });
+    Object.keys(out.hats).forEach(k => { out.hats[k] = Math.floor(out.hats[k]); });
     return out;
   }
 
@@ -257,6 +339,62 @@ function createServer(opts) {
     const exp = now + C.tvTtl; tvCodes.set(code, { id, exp }); return { code, exp };
   }
 
+  /** Подарки администратора, которые клиент ещё не подтвердил (ack), сохраняются на сервере */
+  function keepInbox(next, prev) {
+    const box = (prev && prev.life && prev.life.inbox) || [];
+    if (!box.length) return;
+    if (!next.life) next.life = cleanLife({});
+    const ack = next.life.ack || [];
+    next.life.inbox = box.filter(it => !ack.includes(it.id));
+  }
+  // ---------- приглашения, подарочные коды, обратная связь ----------
+  const PUBKEY = C.publicKeyJwk ? crypto.createPublicKey({ key: C.publicKeyJwk, format: 'jwk' }) : loadPublicKey(C.root);
+  const jsonFile = (n) => path.join(C.dataDir, n);
+  const readJson = (n, d) => { try { return JSON.parse(fs.readFileSync(jsonFile(n), 'utf8')); } catch (e) { return d; } };
+  const refs = readJson('refs.json', { byPark: {}, pending: {}, claimed: {} });
+  const redeemed = new Set(readJson('redeemed.json', []));
+  const saveRefs = () => writeAtomic(jsonFile('refs.json'), JSON.stringify(refs));
+  const saveRedeemed = () => writeAtomic(jsonFile('redeemed.json'), JSON.stringify([...redeemed]));
+  const hourly = new Map(); // "вид:ip" -> [метки времени]
+  function quota(kind, ip, max) {
+    const k = kind + ':' + ip, now = Date.now(), list = (hourly.get(k) || []).filter(t => now - t < 60 * 60 * 1000);
+    if (list.length >= max) { hourly.set(k, list); return false; }
+    list.push(now); hourly.set(k, list); return true;
+  }
+  /** Выдать подарок администратора в «ящик» парка (клиент применит и подтвердит) */
+  function giveGift(id, gift, msg) {
+    const r = parks.get(id); if (!r) return false;
+    if (!r.park.life) r.park.life = cleanLife({});
+    const box = r.park.life.inbox || (r.park.life.inbox = []);
+    if (box.length >= 50) return false;
+    box.push({ id: 'a' + crypto.randomBytes(6).toString('hex'), g: cleanGift(gift), m: str(msg, 140) || undefined, t: Date.now() });
+    r.park.updated = Date.now(); save(id);
+    broadcast(id, { t: 'park', park: pub(r.park) });
+    return true;
+  }
+  function readBody(req, max) {
+    return new Promise((res, rej) => {
+      let size = 0; const chunks = [];
+      req.on('data', (c) => { size += c.length; if (size > max) { rej(new Error('too big')); req.destroy(); } else chunks.push(c); });
+      req.on('end', () => res(Buffer.concat(chunks).toString('utf8'))); req.on('error', rej);
+    });
+  }
+  const tokenHash = C.adminToken ? crypto.createHash('sha256').update(C.adminToken).digest() : null;
+  async function adminGift(req, res) {
+    const ip = ipOf(req);
+    if (!tokenHash) return send(res, 404, 'Не найдено');
+    const w = L.admin.wait('ip:' + ip); if (w) return send(res, 429, JSON.stringify({ error: 'locked', retryIn: w }), 'application/json');
+    const auth = String(req.headers.authorization || ''), m = /^Bearer (.{8,200})$/.exec(auth);
+    const given = crypto.createHash('sha256').update(m ? m[1] : '').digest();
+    if (!m || !crypto.timingSafeEqual(given, tokenHash)) { L.admin.fail('ip:' + ip); return send(res, 401, JSON.stringify({ error: 'unauthorized' }), 'application/json'); }
+    L.admin.ok('ip:' + ip);
+    let b; try { b = JSON.parse(await readBody(req, 16 * 1024)); } catch (e) { return send(res, 400, JSON.stringify({ error: 'bad json' }), 'application/json'); }
+    if (!b || !validGift(b.gift)) return send(res, 400, JSON.stringify({ error: 'bad gift' }), 'application/json');
+    const ids = b.all === true ? [...parks.keys()] : (Array.isArray(b.parks) ? b.parks : [b.park]).filter(x => typeof x === 'string' && ID_RE.test(x)).slice(0, 500);
+    const done = ids.filter(id => giveGift(id, b.gift, b.msg));
+    return send(res, 200, JSON.stringify({ ok: true, given: done.length, missing: ids.length - done.length }), 'application/json');
+  }
+
   // ---------- HTTP ----------
   function send(res, code, body, type, extra) {
     res.writeHead(code, Object.assign({ 'Content-Type': type || 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin' }, extra || {}));
@@ -272,6 +410,7 @@ function createServer(opts) {
   }
   const server = http.createServer((req, res) => {
     try {
+      if (req.method === 'POST' && req.url === '/api/admin/gift') { adminGift(req, res).catch((e) => { console.error(e); try { send(res, 500, 'Ошибка'); } catch (er) { /* ignore */ } }); return; }
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed', null, { Allow: 'GET, HEAD' });
       let url;
       try {
@@ -280,7 +419,10 @@ function createServer(opts) {
       } catch (e) { return send(res, 400, 'Bad request'); }
       if (url.indexOf('\0') >= 0 || url.indexOf('\\') >= 0) return send(res, 400, 'Bad request');
       if (url === '/health') return send(res, 200, JSON.stringify({ ok: true, parks: parks.size }), 'application/json');
-      if (url === '/js/config.js') return send(res, 200, "window.DP_CONFIG = { wsUrl: '/ws', server: true };\n", 'application/javascript; charset=utf-8', { 'Cache-Control': 'no-cache' });
+      if (url === '/js/config.js') { // настоящий config.js (ключ, поддержка) + включение сервера
+        let base = ''; try { base = fs.readFileSync(path.join(C.root, 'js', 'config.js'), 'utf8'); } catch (e) { /* нет файла */ }
+        return send(res, 200, base + "\nwindow.DP_CONFIG = Object.assign(window.DP_CONFIG || {}, { wsUrl: '/ws', server: true });\n", 'application/javascript; charset=utf-8', { 'Cache-Control': 'no-cache' });
+      }
       const im = /^\/img\/([a-z0-9]{6,16})\/([^/]+)$/.exec(url);
       if (im) {
         if (!parks.has(im[1]) || !IMG_NAME_RE.test(im[2])) return send(res, 404, 'Не найдено');
@@ -351,7 +493,7 @@ function createServer(opts) {
             let park; try { park = cleanPark(id, m.park); } catch (e) { return err(m, e.message, { code: 'invalid' }); }
             const auth = await hashPin(String(m.pin), C.scryptN);
             if (parks.has(id)) return err(m, 'Парк уже существует');
-            parks.set(id, { park, auth, ver: 1 }); creates.get(ip).push(Date.now());
+            parks.set(id, { park, auth, ver: 1, born: Date.now() }); creates.get(ip).push(Date.now());
             saveNow(id); ws.auth.set(id, 1); ws.authPin = String(m.pin) + id; ws.parkId = id;
             return reply(m, { t: 'park', park: pub(park), self: true });
           }
@@ -361,6 +503,7 @@ function createServer(opts) {
           ws.parkId = id;
           if (m.park && (m.t === 'update' || (num(m.park.updated, 0) > (r.park.updated || 0)))) {
             let park; try { park = cleanPark(id, m.park); } catch (e) { return err(m, e.message, { code: 'invalid' }); }
+            keepInbox(park, r.park);
             r.park = park; save(id);
             broadcast(id, { t: 'park', park: pub(park) }, ws);
           }
@@ -424,6 +567,48 @@ function createServer(opts) {
           if (!t || t.id !== id || t.exp < Date.now() || !parks.has(id)) return err(m, 'Нужен новый код');
           ws.parkId = id; return reply(m, { t: 'park', park: pub(parks.get(id).park) });
         }
+        case 'ref': { // новый парк пришёл по приглашению
+          const ref = String(m.ref || '');
+          if (!REF_RE.test(ref) || !parks.has(id)) return err(m, 'Неверное приглашение');
+          if (!quota('ref', ip, C.maxRefPerHour)) return err(m, 'Слишком много приглашений. Попробуйте позже.', { code: 'limit' });
+          const a = await authorize(m, id); if (a === null) return;
+          if (!a) return err(m, 'Неверный пароль', { code: 'badpin' });
+          const r = parks.get(id), born = r.born || num(r.park.created, 0);
+          if (refs.byPark[id]) return reply(m, { t: 'ok', ok: true, dup: true });
+          if (Date.now() - born > 48 * 3600 * 1000) return err(m, 'Приглашение действует только для новых парков');
+          if ((r.park.life && r.park.life.refBy) !== ref) return err(m, 'Неверное приглашение');
+          refs.byPark[id] = ref; refs.pending[ref] = Math.min(50, (refs.pending[ref] || 0) + 1); saveRefs();
+          return reply(m, { t: 'ok', ok: true });
+        }
+        case 'refclaim': { // пригласивший забирает награду: доказывает владение ключом, из которого получен код
+          const key = String(m.key || '');
+          if (!/^[0-9a-f]{32}$/.test(key)) return err(m, 'Неверный ключ');
+          if (!quota('refclaim', ip, 60)) return err(m, 'Слишком часто', { code: 'limit' });
+          const ref = crypto.createHash('sha256').update('dp-ref:' + key).digest('hex').slice(0, 10);
+          const n = Math.min(10, refs.pending[ref] || 0);
+          if (n) { refs.pending[ref] -= n; if (!refs.pending[ref]) delete refs.pending[ref]; refs.claimed[ref] = (refs.claimed[ref] || 0) + n; saveRefs(); }
+          return reply(m, { t: 'ok', ok: true, n });
+        }
+        case 'redeem': { // подарочный код: проверка подписи и одноразовости
+          const w = L.redeemIp.wait('ip:' + ip);
+          if (w) return err(m, lockMsg(w), { code: 'locked', retryIn: w });
+          if (!parks.has(id)) return err(m, 'Парк не найден');
+          const a = await authorize(m, id); if (a === null) return;
+          if (!a) return err(m, 'Неверный пароль', { code: 'badpin' });
+          let p; try { p = verifyGiftCode(m.code, PUBKEY, id); } catch (e) { L.redeemIp.fail('ip:' + ip); return err(m, e.message, { code: 'badcode' }); }
+          if (redeemed.has(p.n)) { L.redeemIp.fail('ip:' + ip); return err(m, 'Этот код уже использован', { code: 'used' }); }
+          redeemed.add(p.n); saveRedeemed();
+          return reply(m, { t: 'ok', ok: true, g: cleanGift(p.g), m: str(p.m, 140) });
+        }
+        case 'feedback': {
+          const text = str(m.text, 1000).trim();
+          if (text.length < 3) return err(m, 'Пустое сообщение');
+          if (!quota('fb', ip, C.maxFeedbackPerHour)) return err(m, 'Слишком много сообщений. Попробуйте позже.', { code: 'limit' });
+          const rec = { t: new Date().toISOString(), text, contact: str(m.contact, 80), park: typeof m.park === 'string' && (ID_RE.test(m.park) || m.park === 'demo') ? m.park : '' };
+          fs.mkdirSync(C.dataDir, { recursive: true });
+          fs.appendFileSync(jsonFile('feedback.jsonl'), JSON.stringify(rec) + '\n');
+          return reply(m, { t: 'ok', ok: true });
+        }
         default: return err(m, 'Неизвестная команда');
       }
     }
@@ -448,7 +633,8 @@ function createServer(opts) {
 
   return {
     server, wss, parks, config: C, collectGarbage, flushAll,
-    resetLimits() { Object.values(L).forEach(l => l.m.clear()); creates.clear(); },
+    resetLimits() { Object.values(L).forEach(l => l.m.clear()); creates.clear(); hourly.clear(); },
+    giveGift,
     async listen(port) {
       await migrateV1();
       try { collectGarbage(); } catch (e) { console.error(e); }
@@ -463,7 +649,7 @@ function createServer(opts) {
   };
 }
 
-module.exports = { createServer, Limiter, hashPin, checkPin, writeAtomic };
+module.exports = { createServer, Limiter, hashPin, checkPin, writeAtomic, verifyGiftCode, validGift, loadPublicKey };
 
 if (require.main === module) {
   const app = createServer();

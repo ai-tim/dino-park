@@ -1,6 +1,7 @@
 /* Динопарк — общие утилиты */
 window.DP = window.DP || {};
 (function () {
+  const INIT_Q = new URLSearchParams(location.search); // параметры при открытии (адрес потом чистится)
   const ALPH = 'abcdefghijkmnpqrstuvwxyz23456789';
   function rnd(n) {
     const a = new Uint32Array(1);
@@ -24,7 +25,7 @@ window.DP = window.DP || {};
     pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; },
     clamp(v, a, b) { return v < a ? a : v > b ? b : v; },
     lerp(a, b, t) { return a + (b - a) * t; },
-    param(name) { return new URLSearchParams(location.search).get(name); },
+    param(name) { const v = new URLSearchParams(location.search).get(name); return v != null ? v : INIT_Q.get(name); },
     esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
     toast(msg, ms) {
       let t = document.getElementById('dp-toast');
@@ -65,4 +66,6 @@ window.DP = window.DP || {};
       } else (d.exitFullscreen || d.webkitExitFullscreen).call(d);
     }
   };
+  // ссылка-приглашение ?ref=… — запоминаем, кто позвал (награда придёт, когда будет создан парк)
+  try { const r = new URLSearchParams(location.search).get('ref'); if (r && /^[0-9a-f]{10}$/.test(r) && !localStorage.getItem('dp_ref_from')) localStorage.setItem('dp_ref_from', r); } catch (e) { /* ignore */ }
 })();

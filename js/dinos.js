@@ -421,12 +421,16 @@ window.DP = window.DP || {};
     return `<g filter="url(#${id}paper)" stroke-linejoin="round">${out.join('')}</g>`;
   }
 
+  // палитра 9 — «легендарная», золотая (выдаётся только за яйца/подарок)
+  const GOLD = { b: '#d4a72c', l: '#fff3c2', a: '#9a5f00', h: '#fff8e1', m: '#b07a10' };
+  const LEGEND = 9;
+  function palOf(sp, i) { i = i || 0; return i === LEGEND ? GOLD : sp.palettes[i % sp.palettes.length]; }
   let uidN = 0;
   /** Всё тело в позе покоя. mode: 'color' | 'outline' | 'mask' */
   function inner(id, mode, paletteIndex) {
     const sp = byId[id]; if (!sp) return '';
     mode = mode || 'color';
-    const pal = sp.palettes[(paletteIndex || 0) % sp.palettes.length];
+    const pal = palOf(sp, paletteIndex);
     const u = 'd' + id.slice(0, 3) + (paletteIndex || 0) + (uidN++);
     let body = ART[id].map(p => partInner(id, p, mode, pal, u)).join('');
     if (mode === 'color') body = `<g filter="url(#${u}paper)">${ART[id].map(p => partInner(id, p, 'edge', pal, u)).join('')}</g>` + body;
@@ -488,7 +492,7 @@ window.DP = window.DP || {};
   function rig(id, paletteIndex) {
     const key = id + ':' + (paletteIndex || 0);
     if (rigCache[key]) return rigCache[key];
-    const sp = byId[id], pal = sp.palettes[(paletteIndex || 0) % sp.palettes.length];
+    const sp = byId[id], pal = palOf(sp, paletteIndex);
     const u = 'r' + id.slice(0, 3) + (paletteIndex || 0);
     const parts = ART[id].map(p => { const ey = p.s.filter(x => x[0] === 'E').map(x => ({ x: x[1], y: x[2], r: x[3] })); return { n: p.n, role: p.role, off: p.off || 0, amp: p.amp == null ? 1 : p.amp, pivot: p.pivot, canvas: null, eyes: ey.length ? ey : null }; });
     const promise = Promise.all(ART[id].map((p, i) => Promise.all([
@@ -499,5 +503,5 @@ window.DP = window.DP || {};
     return rigCache[key];
   }
 
-  DP.Dinos = { SPECIES, byId, inner, svg, url, rig, ART, VB, VIEW: { w: 400, h: 254 } };
+  DP.Dinos = { SPECIES, byId, LEGEND, palOf, inner, svg, url, rig, ART, VB, VIEW: { w: 400, h: 254 } };
 })();
