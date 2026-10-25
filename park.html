@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b2a2e">
+  <title>Динопарк — мой парк</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="park" class="park-canvas" aria-label="Динопарк"></canvas>
+  <div id="hint" class="hint glass">👆 Нажми на парк, чтобы открыть меню</div>
+
+  <div id="overlay" class="overlay closed"><div class="panel glass" id="panel" role="dialog" aria-modal="true"></div></div>
+
+  <div id="camera" class="camera hidden">
+    <video id="video" playsinline autoplay muted></video>
+    <div class="frame"><i></i><i></i><i></i><i></i></div>
+    <div class="top">
+      <button class="back-btn" id="cam-back">← НАЗАД</button>
+      <label class="btn" style="min-height:44px">📁 Загрузить фото
+        <input type="file" id="cam-file" accept="image/*" capture="environment" hidden>
+      </label>
+    </div>
+    <div class="tip glass" id="cam-tip">Наведи камеру на лист так, чтобы все 4 чёрных квадрата попали в рамку</div>
+    <div class="bottom"><button class="shutter" id="cam-shot" title="Сфотографировать">📸</button></div>
+  </div>
+  <input type="file" id="photo-file" accept="image/*" capture="environment" hidden>
+  <input type="file" id="bg-file" accept="image/*" hidden>
+
+  <script src="js/vendor/qrcode.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/music.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/needs.js"></script>
+  <script src="js/voices.js"></script>
+  <script src="js/dinos.js"></script>
+  <script src="js/template.js"></script>
+  <script src="js/backgrounds.js"></script>
+  <script src="js/scene.js"></script>
+  <script src="js/photo.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/park.js"></script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b2a2e">
+  <title>Динопарк — мои парки</title>
+  <meta name="description" content="Раскрась динозавра на бумаге, сфотографируй — и он оживёт в виртуальном динопарке. Можно открыть на телевизоре.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="bgscene" class="park-canvas" style="cursor:default" aria-hidden="true"></canvas>
+  <main class="landing">
+    <h1>🦖 Мои парки</h1>
+    <p class="lead">Раскрась динозавра на листе, сфотографируй — и он оживёт в парке. Покорми динозавров и открой парк на большом экране!</p>
+    <div class="cols">
+      <section class="panel glass">
+        <div class="panel-head"><h2>🗂️ Мои парки</h2></div>
+        <div id="my-parks" class="rows"></div>
+        <div class="btn-row"><button class="btn green" id="new-park">＋ Новый парк</button></div>
+      </section>
+      <section class="panel glass">
+        <div class="panel-head"><h2>🔑 Открыть парк по коду</h2></div>
+        <label class="lbl" for="open-id">Код парка</label>
+        <input class="field" id="open-id" maxlength="10" placeholder="например, 8k4u7h2jxg" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <label class="lbl" for="open-pin">Пароль</label>
+        <input class="field" id="open-pin" maxlength="12" inputmode="numeric" placeholder="4–12 цифр" type="password" autocomplete="off">
+        <div class="btn-row"><button class="btn" id="open-btn">Открыть</button></div>
+        <p class="note" id="mode-note" style="margin-top:12px"></p>
+      </section>
+    </div>
+    <div class="landing-links">
+      <a class="btn" href="index.html">🏠 О Динопарке</a>
+      <a class="btn" href="park.html?demo=1">🎬 Демо-парк</a>
+      <a class="btn" href="coloring.html">🖨️ Раскраски для печати</a>
+      <a class="btn" href="tv.html">📺 Я — телевизор</a>
+    </div>
+  </main>
+  <div id="overlay" class="overlay closed"><div class="panel glass" id="panel"></div></div>
+
+  <script src="js/util.js"></script>
+  <script src="js/music.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/needs.js"></script>
+  <script src="js/voices.js"></script>
+  <script src="js/dinos.js"></script>
+  <script src="js/backgrounds.js"></script>
+  <script src="js/scene.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/parks.js"></script>
+</body>
+</html>

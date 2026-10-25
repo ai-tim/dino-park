@@ -1,0 +1,31 @@
+/* Динопарк — страница раскрасок: экранный карусельный просмотр + печать A4 */
+body.coloring { overflow: auto; background: radial-gradient(circle at 30% 10%, #145055, #061a1e 70%); min-height: 100vh; }
+.c-wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+.c-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 16px; margin-bottom: 16px; }
+.c-top h1 { margin: 0; font-size: 24px; font-weight: 900; flex: 1; min-width: 220px; }
+.c-stage { display: flex; align-items: center; gap: 12px; }
+.c-stage .nav { width: 56px; height: 56px; font-size: 26px; flex: none; }
+.pages { flex: 1; min-width: 0; }
+.page { background: #fff; border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,.45); overflow: hidden; display: none; }
+.page.current { display: block; }
+.page svg { display: block; width: 100%; height: auto; }
+.c-name { text-align: center; font-weight: 900; font-size: 20px; margin: 14px 0 4px; }
+.c-dots { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+.c-dots button { width: 74px; height: 52px; border-radius: 12px; border: 2px solid transparent; background: #fff; padding: 2px; cursor: pointer; }
+.c-dots button.on { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(61,220,132,.35); }
+.c-dots img { width: 100%; height: 100%; object-fit: contain; }
+.c-tips { margin-top: 18px; padding: 16px 18px; }
+.c-tips li { margin: 4px 0; }
+
+@page { size: A4 landscape; margin: 0; }
+@media print {
+  html, body { background: #fff !important; overflow: visible !important; height: auto; }
+  .no-print { display: none !important; }
+  .c-wrap { padding: 0; max-width: none; }
+  .c-stage { display: block; }
+  .page { display: block !important; width: 297mm; height: 210mm; border-radius: 0; box-shadow: none; page-break-after: always; break-after: page; overflow: hidden; }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+  .page svg { width: 297mm; height: 210mm; }
+  body.print-one .page:not(.current) { display: none !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

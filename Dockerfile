@@ -1,23 +1,12 @@
-# Используем официальный легковесный образ Node.js
-FROM node:18-alpine
-
-# Устанавливаем рабочую директорию внутри контейнера
+# Динопарк: сайт + сервер синхронизации (WebSocket)
+FROM node:20-alpine
 WORKDIR /app
-
-# Копируем манифест зависимостей
 COPY package.json ./
-
-# Устанавливаем зависимости (в нашем случае их нет, но структура сохраняется)
-RUN npm install --production
-
-# Копируем остальные файлы проекта
+RUN npm install --omit=dev && npm cache clean --force
 COPY . .
-
-# Создаем папку для пользовательских данных (миров)
-RUN mkdir -p data
-
-# Открываем порт сервера
-EXPOSE 8000
-
-# Команда запуска приложения
-CMD ["npm", "start"]
+ENV PORT=8080 DATA_DIR=/data
+RUN mkdir -p /data && chown node:node /data
+USER node
+VOLUME ["/data"]
+EXPOSE 8080
+CMD ["node", "server/server.js"]

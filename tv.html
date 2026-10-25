@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#06161a">
+  <title>Динопарк — экран телевизора</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { background: radial-gradient(circle at 50% 30%, #0f3a3f, #04121a 70%); }
+    .tv-join { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 5; }
+    .tv-join .panel { width: min(520px, 100%); text-align: center; padding: 30px 26px; }
+    .tv-join h1 { margin: 0 0 6px; font-size: 30px; font-weight: 900; }
+    .tv-join .field { text-align: center; font-size: 34px; letter-spacing: 10px; min-height: 72px; margin-top: 18px; }
+    .tv-bar { position: fixed; top: 14px; right: 14px; z-index: 6; display: flex; gap: 8px; transition: opacity .5s; }
+    .tv-bar.fade { opacity: 0; pointer-events: none; }
+    .tv-name { position: fixed; left: 16px; bottom: 14px; z-index: 6; padding: 8px 14px; font-weight: 800; transition: opacity .5s; }
+    .tv-name.fade { opacity: 0; }
+  </style>
+</head>
+<body>
+  <canvas id="park" class="park-canvas hidden" style="cursor:default"></canvas>
+  <div class="tv-join" id="join">
+    <div class="panel glass">
+      <div style="font-size:54px">📺</div>
+      <h1>Открыть парк на телевизоре</h1>
+      <p class="note">Введите пятизначный код из меню «Открыть на другом экране» на телефоне</p>
+      <input class="field" id="code" maxlength="5" inputmode="numeric" pattern="[0-9]*" placeholder="например, 59206" autocomplete="off" autofocus>
+      <div class="btn-row"><button class="btn green" id="go">Открыть</button></div>
+      <p class="note" id="err" style="color:#ffb3b3;min-height:20px"></p>
+      <p class="note" id="mode"></p>
+    </div>
+  </div>
+  <div class="tv-bar hidden" id="bar"><button class="btn" id="fs">⛶ Во весь экран</button><button class="btn" id="exit">✕ Выйти</button></div>
+  <div class="tv-name glass hidden" id="tvname"></div>
+  <div class="tv-toast glass" id="tvtoast"></div>
+
+  <script src="js/util.js"></script>
+  <script src="js/music.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/needs.js"></script>
+  <script src="js/voices.js"></script>
+  <script src="js/dinos.js"></script>
+  <script src="js/backgrounds.js"></script>
+  <script src="js/scene.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/tv.js"></script>
+</body>
+</html>

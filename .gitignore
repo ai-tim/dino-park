@@ -1,0 +1,5 @@
+node_modules/
+server/data/
+demo/*.mp4
+tests/node_modules/
+.DS_Store

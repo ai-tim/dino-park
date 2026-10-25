@@ -1,0 +1,8 @@
+treasure-hunter.mp3
+Original title: "Treasure Hunter" (simple orchestral loop)
+Author: TAD (https://opengameart.org/users/tad)
+Source: https://opengameart.org/content/treasure-hunter
+License: CC0 1.0 Universal (Public Domain Dedication)
+         https://creativecommons.org/publicdomain/zero/1.0/
+Changes: re-encoded to 160 kbit/s MP3, the first 0.3 s of silence trimmed for a seamless loop.
+Attribution is not required by CC0; the author is credited out of courtesy.

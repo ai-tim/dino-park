@@ -1,5 +1,9 @@
 node_modules
-data/
+server/node_modules
+server/data
+tests
+demo
+legacy
 .git
-.env
-README.md
+.github
+*.mp4

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Динопарк — раскраски для печати (A4)</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/coloring.css">
+</head>
+<body class="coloring">
+  <div class="c-wrap">
+    <div class="c-top glass no-print">
+      <a class="back-btn" href="javascript:history.length>1?history.back():location.href='index.html'" style="text-decoration:none">← НАЗАД</a>
+      <h1>🖨️ Раскраски — шаблоны динозавров</h1>
+      <button class="btn green" id="print-one">🖨️ Печать</button>
+      <button class="btn" id="print-all">🖨️ Печатать все</button>
+    </div>
+    <div class="c-stage">
+      <button class="icon-btn nav no-print" id="prev" title="Предыдущий">‹</button>
+      <div class="pages" id="pages"></div>
+      <button class="icon-btn nav no-print" id="next" title="Следующий">›</button>
+    </div>
+    <div class="c-name no-print" id="name"></div>
+    <div class="c-dots no-print" id="dots"></div>
+    <div class="c-tips glass no-print">
+      <b>Как сделать, чтобы динозавр ожил:</b>
+      <ol>
+        <li>Распечатай лист на обычной бумаге A4 (альбомная ориентация, масштаб 100%).</li>
+        <li>Раскрась динозавра яркими фломастерами или карандашами. <b>Не закрашивай чёрные квадраты</b> по углам и маленький код внизу — по ним парк узнаёт, кто нарисован.</li>
+        <li>В парке нажми «📷 Сфотографировать динозавра» и сними лист целиком, сверху, при хорошем свете.</li>
+      </ol>
+    </div>
+  </div>
+  <script src="js/util.js"></script>
+  <script src="js/dinos.js"></script>
+  <script src="js/template.js"></script>
+  <script>
+  (function () {
+    const sp = DP.Dinos.SPECIES, pages = document.getElementById('pages'), dots = document.getElementById('dots');
+    let cur = Math.max(0, sp.findIndex(s => s.id === DP.util.param('dino')));
+    pages.innerHTML = sp.map(s => `<div class="page" data-id="${s.id}">${DP.Template.pageSVG(s.id, 'outline', 'width="297mm" height="210mm" preserveAspectRatio="xMidYMid meet"')}</div>`).join('');
+    dots.innerHTML = sp.map((s, i) => `<button data-i="${i}" title="${s.name}"><img src="${DP.Dinos.url(s.id, 0, 'outline')}" alt="${s.name}"></button>`).join('');
+    function show(i) {
+      cur = (i + sp.length) % sp.length;
+      pages.querySelectorAll('.page').forEach((p, k) => p.classList.toggle('current', k === cur));
+      dots.querySelectorAll('button').forEach((b, k) => b.classList.toggle('on', k === cur));
+      document.getElementById('name').textContent = `${sp[cur].emoji} ${sp[cur].name} · ${cur + 1} из ${sp.length}`;
+    }
+    show(cur);
+    document.getElementById('prev').onclick = () => show(cur - 1);
+    document.getElementById('next').onclick = () => show(cur + 1);
+    dots.onclick = (e) => { const b = e.target.closest('button'); if (b) show(+b.dataset.i); };
+    document.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') show(cur - 1); if (e.key === 'ArrowRight') show(cur + 1); });
+    document.getElementById('print-one').onclick = () => { document.body.classList.add('print-one'); window.print(); };
+    document.getElementById('print-all').onclick = () => { document.body.classList.remove('print-one'); window.print(); };
+    window.addEventListener('afterprint', () => document.body.classList.remove('print-one'));
+    if (DP.util.param('print') === 'all') setTimeout(() => window.print(), 400);
+  })();
+  </script>
+</body>
+</html>

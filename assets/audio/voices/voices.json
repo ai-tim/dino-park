@@ -1,0 +1,12 @@
+{
+  "_note": "Голоса собраны из 10 записей пользователя (demos/audio/dino*_*.mp3 → legacy/demos/audio). rate — коэффициент скорости/высоты (asetrate), <1 ниже, >1 выше. centroid — спектральный центр (Гц): чем меньше, тем «глубже» звук.",
+  "trex":            [{"file":"1.mp3","src":"dino4_2","rate":1.00,"centroid":488},  {"file":"2.mp3","src":"dino3_2","rate":0.90,"centroid":1270}],
+  "brachiosaurus":   [{"file":"1.mp3","src":"dino1_1","rate":0.82,"centroid":787},  {"file":"2.mp3","src":"dino4_2","rate":0.88,"fx":"echo","centroid":445}],
+  "ankylosaurus":    [{"file":"1.mp3","src":"dino4_1","rate":0.95,"centroid":1033}, {"file":"2.mp3","src":"dino1_1","rate":1.08,"centroid":1016}],
+  "triceratops":     [{"file":"1.mp3","src":"dino1_2","rate":1.00,"centroid":1190}, {"file":"2.mp3","src":"dino2_2","rate":0.92,"centroid":936}],
+  "stegosaurus":     [{"file":"1.mp3","src":"dino0_2","rate":1.00,"centroid":1472}, {"file":"2.mp3","src":"dino4_1","rate":0.88,"centroid":975}],
+  "parasaurolophus": [{"file":"1.mp3","src":"dino2_1","rate":1.00,"centroid":1657}, {"file":"2.mp3","src":"dino1_2","rate":1.22,"centroid":1433}],
+  "plesiosaur":      [{"file":"1.mp3","src":"dino2_2","rate":0.90,"fx":"water echo","centroid":1076}, {"file":"2.mp3","src":"dino0_2","rate":0.86,"fx":"echo","centroid":1284}],
+  "pterodactyl":     [{"file":"1.mp3","src":"dino3_1","rate":1.05,"centroid":2215}, {"file":"2.mp3","src":"dino0_1","rate":1.15,"centroid":2850}],
+  "velociraptor":    [{"file":"1.mp3","src":"dino2_1","rate":1.38,"centroid":2109}, {"file":"2.mp3","src":"dino0_1","rate":1.30,"centroid":2925}]
+}

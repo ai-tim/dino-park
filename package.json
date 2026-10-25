@@ -1,14 +1,17 @@
 {
   "name": "dino-park",
-  "version": "1.0.0",
-  "description": "Interactive paper dinosaur coloring and 3D park simulation",
-  "main": "server.js",
+  "version": "2.0.0",
+  "description": "Динопарк: раскрась динозавра на бумаге — и он оживёт в парке",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "Юрий Власенко",
+  "main": "server/server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server/server.js",
+    "test": "node --test server/test/"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "license": "MIT",
-  "dependencies": {}
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
 }

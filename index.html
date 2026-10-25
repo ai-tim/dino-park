@@ -1,334 +1,94 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парк Динозавров — Живая Экосистема</title>
-    <style>
-        * { box-sizing: border-box; }
-        body, html {
-            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
-            background: #7dd3fc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: white;
-        }
-        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        
-        .menu-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;
-            display: flex; flex-direction: column; justify-content: space-between; align-items: center;
-            padding: 30px 20px; pointer-events: none;
-        }
-
-        .hero-banner {
-            background: rgba(15, 23, 42, 0.35); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-            padding: 14px 28px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.25);
-            text-align: center; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); pointer-events: auto;
-            max-width: 480px; width: 100%;
-        }
-        .hero-banner h1 { margin: 0 0 4px 0; font-size: 1.6rem; color: #ffffff; font-weight: 800; text-shadow: 0 2px 8px rgba(0,0,0,0.4); }
-        .hero-banner p { margin: 0; color: #e2e8f0; font-size: 0.85rem; text-shadow: 0 1px 4px rgba(0,0,0,0.4); }
-
-        .menu-buttons-panel {
-            background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-            padding: 16px 20px; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.25);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3); display: flex; gap: 12px;
-            width: 100%; max-width: 520px; pointer-events: auto; justify-content: center; flex-wrap: wrap;
-        }
-        .menu-btn {
-            flex: 1; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 8px;
-            padding: 12px 16px; border-radius: 14px; text-decoration: none; font-weight: 700; font-size: 0.9rem;
-            color: white; box-shadow: 0 6px 16px rgba(0,0,0,0.2); transition: transform 0.15s ease, background 0.15s ease;
-            border: 1px solid rgba(255, 255, 255, 0.3); cursor: pointer; text-align: center;
-        }
-        .menu-btn:active { transform: scale(0.96); }
-        .menu-btn.primary { background: rgba(16, 185, 129, 0.65); }
-        .menu-btn.primary:hover { background: rgba(16, 185, 129, 0.85); }
-        .menu-btn.scanner { background: rgba(59, 130, 246, 0.65); }
-        .menu-btn.scanner:hover { background: rgba(59, 130, 246, 0.85); }
-        .menu-btn.tv { background: rgba(139, 92, 246, 0.65); }
-        .menu-btn.tv:hover { background: rgba(139, 92, 246, 0.85); }
-
-        .audio-control {
-            position: absolute; top: 20px; right: 20px; z-index: 100;
-            background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3); color: white;
-            padding: 10px 16px; border-radius: 14px; font-weight: bold; font-size: 0.85rem;
-            cursor: pointer; pointer-events: auto; display: flex; align-items: center; gap: 6px;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.25);
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b2a2e">
+  <title>Динопарк — оживи своего динозавра</title>
+  <meta name="description" content="Раскрась динозавра на бумаге, сфотографируй — и он оживёт в виртуальном динопарке: ест, играет, спит и путешествует. Можно открыть на телевизоре.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/landing.css">
 </head>
-<body>
-    <button class="audio-control" id="audioToggle" onclick="toggleParkMusic()">🎵 Музыка парка: Вкл</button>
-
-    <div id="canvas-container"></div>
-
-    <div class="menu-overlay">
-        <div class="hero-banner">
-            <h1>🦕 Парк Динозавров</h1>
-            <p>Живая экосистема, дикая природа и творчество</p>
-        </div>
-
-        <div class="menu-buttons-panel">
-            <a href="demos/realistic-dino-park.html" class="menu-btn primary">🌴 В Парк</a>
-            <a href="demos/scanner.html" class="menu-btn scanner">🎨 Сканер</a>
-            <a href="demos/realistic-dino-park.html?tv=1" class="menu-btn tv">📺 ТВ Режим</a>
-        </div>
+<body class="lp">
+  <header class="lp-hero">
+    <canvas id="hero-scene" aria-hidden="true"></canvas>
+    <div class="lp-shade"></div>
+    <nav class="lp-nav">
+      <a class="lp-logo" href="index.html">🦖 Динопарк</a>
+      <span class="lp-nav-links"><a href="coloring.html">Раскраски</a><a href="tv.html">Для ТВ</a><a href="parks.html" class="lp-nav-cta">Войти</a></span>
+    </nav>
+    <div class="lp-hero-text">
+      <h1>Раскрась динозавра —<br>и он <span class="lp-accent">оживёт</span>!</h1>
+      <p>Детский рисунок на бумаге превращается в живого динозавра: он гуляет, ест, играет, засыпает и путешествует по пяти локациям. А парк можно открыть на телевизоре.</p>
+      <div class="lp-cta-row">
+        <a class="btn green lp-cta" id="cta" href="parks.html">Войти в парк 🦕</a>
+        <a class="btn lp-ghost" href="park.html?demo=1">🎬 Посмотреть демо</a>
+      </div>
+      <div class="lp-loc" id="hero-loc">Джунгли с вулканом</div>
     </div>
+  </header>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script>
-        // --- Аудио-синтезатор (Автоматический старт с защитой браузера) ---
-        let audioCtx = null;
-        let isMusicPlaying = false;
-        let melodyInterval = null;
+  <main>
+    <section class="lp-sec" id="steps">
+      <h2>Как это работает</h2>
+      <div class="lp-steps">
+        <div class="lp-step"><div class="lp-num">1</div><div class="lp-emo">🖨️</div><h3>Распечатай</h3><p>Выбери динозавра и распечатай раскраску на обычном листе А4.</p></div>
+        <div class="lp-step"><div class="lp-num">2</div><div class="lp-emo">🖍️</div><h3>Раскрась</h3><p>Карандаши, фломастеры, краски — любые цвета. Главное — не закрашивать чёрные квадраты в углах.</p></div>
+        <div class="lp-step"><div class="lp-num">3</div><div class="lp-emo">📷</div><h3>Сфотографируй</h3><p>Наведи камеру телефона — динозавр выпрыгнет с листа прямо в парк.</p></div>
+      </div>
+    </section>
 
-        function initAudioContext() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-        }
+    <section class="lp-sec lp-alt">
+      <h2>Что умеет парк</h2>
+      <div class="lp-features">
+        <div class="lp-f"><span>🍖🎾💤</span><h3>Заботься о динозаврах</h3><p>Они проголодаются, заскучают и устанут. Покорми, поиграй мячиком, уложи спать — шкалы покажут, чего хочет каждый.</p></div>
+        <div class="lp-f"><span>🤫</span><h3>Тайно покорми своих</h3><p>«Покормить всех» видят все экраны, а тайный корм появится только возле твоих динозавров.</p></div>
+        <div class="lp-f"><span>🌋🏝️🏜️🏔️🌙</span><h3>Пять локаций</h3><p>Джунгли с вулканом, лагуна, каньон, ледниковая долина и ночной лес со светлячками. Отправляй динозавров путешествовать!</p></div>
+        <div class="lp-f"><span>🗣️</span><h3>Свои голоса</h3><p>Тираннозавр рычит басом, раптор и птеродактиль — пронзительно. Динозавры отзываются на прикосновение, еду и пробуждение.</p></div>
+        <div class="lp-f"><span>📺</span><h3>На большом экране</h3><p>Открой парк на телевизоре по QR-коду или 5-значному коду. Телефон становится пультом.</p></div>
+        <div class="lp-f"><span>🔒</span><h3>Парк под паролем</h3><p>У каждого парка свой код и пароль. Можно сменить пароль, переименовать или удалить парк.</p></div>
+      </div>
+    </section>
 
-        function startParkMusic() {
-            initAudioContext();
-            isMusicPlaying = true;
-            document.getElementById('audioToggle').innerText = "🎵 Музыка парка: Вкл";
-            if (melodyInterval) clearInterval(melodyInterval);
-            
-            const notes = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25];
-            melodyInterval = setInterval(() => {
-                if (!isMusicPlaying) return;
-                const randomNote = notes[Math.floor(Math.random() * notes.length)];
-                playNote(randomNote, 1.2);
-            }, 800);
-        }
+    <section class="lp-sec lp-split">
+      <div>
+        <h2>🖨️ Раскраски для печати</h2>
+        <p>9 видов: тираннозавр, трицератопс, стегозавр, брахиозавр, птеродактиль, плезиозавр, паразауролоф, анкилозавр и велоцираптор. Лист сам подскажет парку, кто на нём нарисован.</p>
+        <a class="btn green" href="coloring.html">Открыть раскраски</a>
+      </div>
+      <div class="lp-sheet" id="lp-sheet"></div>
+    </section>
 
-        function toggleParkMusic() {
-            const btn = document.getElementById('audioToggle');
-            if (isMusicPlaying) {
-                isMusicPlaying = false;
-                if (melodyInterval) clearInterval(melodyInterval);
-                btn.innerText = "🎵 Музыка парка: Выкл";
-            } else {
-                startParkMusic();
-            }
-        }
+    <section class="lp-sec lp-alt lp-split">
+      <div class="lp-tv"><div class="lp-tv-screen"><canvas id="tv-scene" aria-hidden="true"></canvas></div><div class="lp-tv-leg"></div></div>
+      <div>
+        <h2>📺 Динопарк на телевизоре</h2>
+        <p>Откройте на телевизоре или ноутбуке страницу <b>tv.html</b> и введите 5-значный код из меню «Открыть на другом экране». Всё, что дети делают на телефоне, сразу появится на большом экране.</p>
+        <a class="btn" href="tv.html">📺 Я — телевизор</a>
+      </div>
+    </section>
 
-        function playNote(freq, duration) {
-            if (!audioCtx || !isMusicPlaying) return;
-            try {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start();
-                osc.stop(audioCtx.currentTime + duration);
-            } catch(e) {}
-        }
+    <section class="lp-sec lp-final">
+      <h2>Готовы запустить первого динозавра?</h2>
+      <a class="btn green lp-cta" href="parks.html">Войти в парк 🦕</a>
+    </section>
+  </main>
 
-        // Автозапуск музыки при первом клике/касании страницы (обход ограничений браузера)
-        window.addEventListener('pointerdown', () => {
-            if (!isMusicPlaying && !audioCtx) {
-                startParkMusic();
-            }
-        }, { once: true });
+  <footer class="lp-foot">
+    <div>🦖 Динопарк · <a href="parks.html">Мои парки</a> · <a href="coloring.html">Раскраски</a> · <a href="tv.html">Для ТВ</a> · <a href="park.html?demo=1">Демо</a></div>
+    <div class="lp-copy">© 2026 Юрий Власенко. Все права защищены. Копирование, изменение и использование кода без письменного разрешения запрещено.</div>
+  </footer>
 
-        // --- 3D Сцена ---
-        const container = document.getElementById('canvas-container');
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x7dd3fc);
-        scene.fog = new THREE.FogExp2(0x7dd3fc, 0.012);
-
-        const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-        camera.position.set(0, 6, 20);
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(container.clientWidth, container.clientHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        container.appendChild(renderer.domElement);
-
-        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-        const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.3);
-        sunLight.position.set(20, 30, 20);
-        scene.add(sunLight);
-
-        // Поляна
-        const ground = new THREE.Mesh(
-            new THREE.PlaneGeometry(120, 120),
-            new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.85 })
-        );
-        ground.rotation.x = -Math.PI / 2;
-        ground.position.y = -2;
-        scene.add(ground);
-
-        // Деревья
-        function createTree(x, z) {
-            const treeGroup = new THREE.Group();
-            const trunk = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.3, 0.5, 2, 6),
-                new THREE.MeshStandardMaterial({ color: 0x78350f })
-            );
-            trunk.position.y = -1;
-            treeGroup.add(trunk);
-
-            const leaves = new THREE.Mesh(
-                new THREE.ConeGeometry(2, 4, 6),
-                new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.7 })
-            );
-            leaves.position.y = 1.2;
-            treeGroup.add(leaves);
-
-            treeGroup.position.set(x, -2, z);
-            scene.add(treeGroup);
-        }
-
-        for (let i = 0; i < 14; i++) {
-            const angle = (i / 14) * Math.PI * 2;
-            const dist = 12 + Math.random() * 8;
-            createTree(Math.cos(angle) * dist, Math.sin(angle) * dist - 4);
-        }
-
-        // Птеродактиль
-        const flyerGroup = new THREE.Group();
-        const flyerMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.3 });
-        flyerGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 1.8), flyerMat));
-        const flyerHead = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.8), flyerMat);
-        flyerHead.position.set(0, 0.2, 1.1);
-        flyerGroup.add(flyerHead);
-
-        const wingGeo = new THREE.BufferGeometry();
-        wingGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
-            0, 0, 0,   0, 0, 1.2,   3.5, 0, -0.8,
-            0, 0, 0,   0, 0, 1.2,  -3.5, 0, -0.8
-        ]), 3));
-        flyerGroup.add(new THREE.Mesh(wingGeo, flyerMat));
-        scene.add(flyerGroup);
-
-        // Динозавры с защитой от столкновений (коллизиями) и мгновенным стартом
-        function createSmartDino(colorHex, startX, startZ) {
-            const group = new THREE.Group();
-            const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 });
-            
-            const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1.6, 3.4), bodyMat);
-            body.position.y = 0.8;
-            group.add(body);
-
-            const head = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 1.1), bodyMat);
-            head.position.set(0, 1.6, 2);
-            group.add(head);
-
-            const tail = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2.5, 4), bodyMat);
-            tail.rotation.x = Math.PI / 2;
-            tail.position.set(0, 0.9, -2.6);
-            group.add(tail);
-
-            const legGeo = new THREE.BoxGeometry(0.4, 1.4, 0.4);
-            ['FL', 'FR', 'BL', 'BR'].forEach((pos, idx) => {
-                const leg = new THREE.Mesh(legGeo, bodyMat);
-                leg.position.set((idx % 2 === 0 ? 0.8 : -0.8), -0.2, (idx < 2 ? 1 : -1));
-                group.add(leg);
-            });
-
-            group.position.set(startX, -2, startZ);
-            scene.add(group);
-
-            return {
-                mesh: group,
-                targetX: startX,
-                targetZ: startZ,
-                speed: 0.005 + Math.random() * 0.002,
-                state: 'walking', // сразу активны при входе
-                timer: 2 + Math.random() * 2
-            };
-        }
-
-        const smartDinosaurs = [
-            createSmartDino(0x059669, -4, -2),
-            createSmartDino(0xd97706, 4, -5),
-            createSmartDino(0xdb2777, -5, 4)
-        ];
-
-        function updateEcosystem(time) {
-            // Экосистема с коллизиями (проверкой расстояния друг от друга)
-            smartDinosaurs.forEach((dino, idx) => {
-                dino.timer -= 0.016;
-
-                // Проверка столкновений с другими динозаврами
-                for (let j = 0; j < smartDinosaurs.length; j++) {
-                    if (idx === j) continue;
-                    const other = smartDinosaurs[j];
-                    const distToOther = dino.mesh.position.distanceTo(other.mesh.position);
-                    if (distToOther < 2.5) {
-                        // Если подошли слишком близко — меняем цель, чтобы разойтись
-                        dino.targetX = dino.mesh.position.x + (Math.random() - 0.5) * 6;
-                        dino.targetZ = dino.mesh.position.z + (Math.random() - 0.5) * 6;
-                        dino.state = 'walking';
-                        dino.timer = 5;
-                    }
-                }
-
-                if (dino.state === 'grazing') {
-                    dino.mesh.position.y = -2 + Math.sin(time * 3 + idx) * 0.03;
-                    if (dino.timer <= 0) {
-                        dino.targetX = (Math.random() - 0.5) * 12;
-                        dino.targetZ = (Math.random() - 0.5) * 8 - 3;
-                        dino.state = 'walking';
-                        dino.timer = 7 + Math.random() * 5;
-                    }
-                } else {
-                    const dx = dino.targetX - dino.mesh.position.x;
-                    const dz = dino.targetZ - dino.mesh.position.z;
-                    const dist = Math.sqrt(dx * dx + dz * dz);
-
-                    if (dist < 0.4 || dino.timer <= 0) {
-                        dino.state = 'grazing';
-                        dino.timer = 4 + Math.random() * 4;
-                    } else {
-                        const targetAngle = Math.atan2(dx, dz);
-                        let angleDiff = targetAngle - dino.mesh.rotation.y;
-                        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                        dino.mesh.rotation.y += angleDiff * 0.03;
-
-                        dino.mesh.position.x += Math.sin(dino.mesh.rotation.y) * dino.speed * 12;
-                        dino.mesh.position.z += Math.cos(dino.mesh.rotation.y) * dino.speed * 12;
-                        dino.mesh.position.y = -2 + Math.abs(Math.sin(time * 4 + idx)) * 0.08;
-                    }
-                }
-            });
-
-            // Птеродактиль
-            const flyerAngle = time * 0.4;
-            const radius = 10;
-            flyerGroup.position.x = Math.cos(flyerAngle) * radius;
-            flyerGroup.position.z = Math.sin(flyerAngle) * radius - 4;
-            flyerGroup.position.y = 8 + Math.sin(time * 0.8) * 4; 
-            flyerGroup.rotation.x = Math.cos(time * 0.8) * 0.4;
-            flyerGroup.rotation.y = -flyerAngle - Math.PI / 2;
-            flyerGroup.rotation.z = Math.sin(time * 4) * 0.2;
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            const time = Date.now() * 0.001;
-
-            updateEcosystem(time);
-
-            renderer.render(scene, camera);
-        }
-        animate();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
-        });
-    </script>
+  <script src="js/util.js"></script>
+  <script src="js/needs.js"></script>
+  <script src="js/voices.js"></script>
+  <script src="js/dinos.js"></script>
+  <script src="js/template.js"></script>
+  <script src="js/backgrounds.js"></script>
+  <script src="js/scene.js"></script>
+  <script src="js/landing.js"></script>
 </body>
 </html>
