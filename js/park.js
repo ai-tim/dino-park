@@ -648,7 +648,7 @@
               refresh();
             });
           };
-          const refresh = () => { const el = p.querySelector('#dn-list'); if (!el || current !== 'dinos') return; el.innerHTML = rowsHtml(); wire(); };
+          const refresh = () => { const el = p.querySelector('#dn-list'); if (!el || current !== 'dinos') return; const h = rowsHtml(); if (el._h === h) return; el._h = h; el.innerHTML = h; wire(); }; // перерисовываем только при изменениях, чтобы не терять нажатия
           wire();
           const a = p.querySelector('#dn-add'); if (a) a.onclick = () => go('ready');
           const fa = p.querySelector('#dn-feedall'); if (fa) fa.onclick = () => { park.dinos.filter(d => d.loc !== park.view).forEach(d => { const b = N.at(d); N.feed(d, 30); careFor(d, 'feed', b); }); commit(); feedAll(); };

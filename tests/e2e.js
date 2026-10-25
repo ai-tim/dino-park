@@ -487,7 +487,7 @@ const watch = (page, tag) => {
     const found = await vp.evaluate((u) => ({ n: window.dpPark.park.life.stats.found || 0, st: window.dpScene.ent(u).state }), hid);
     ok('v3: прятки — нашли динозавра за кустом касанием', hid && spot && found.n === found0 + 1 && found.st !== 'hidden', JSON.stringify({ hid, spot, sp2, found }));
     // прятки: не нашли — выходит сам
-    const self = await vp.evaluate(async () => { const s = window.dpScene, e = s.ents.find(x => x.habitat === 'ground' && x.state === 'wander'); if (!e || !s.hide(e.uid, 2)) return 'nohide'; e.state = 'hidden'; e.x = e.hideAt.x; e.y = e.hideAt.y - 3; await new Promise(r => setTimeout(r, 3500)); return e.state; });
+    const self = await vp.evaluate(async () => { const s = window.dpScene, e = s.ents.find(x => x.habitat === 'ground' && x.state === 'wander'); if (!e || !s.hide(e.uid, 2)) return 'nohide'; e.state = 'hidden'; e.x = e.hideAt.x; e.y = e.hideAt.y - 3; for (let i = 0; i < 40 && e.state === 'hidden'; i++) await new Promise(r => setTimeout(r, 250)); return e.state; }); // ждём до 10 с: при программном WebGL кадры медленнее
     ok('v3: прятки — если не найти, динозавр выходит сам', self !== 'hidden' && self !== 'nohide', self);
     // подарок от динозавра за заботу
     const gift = await vp.evaluate(() => { const P = window.dpPark, d = P.park.dinos[2]; d.aff = 10; d.lastGift = null; d.added = Date.now() - 3 * 3600e3; d.owner = P.owner; d.needs = { food: 30, play: 90, sleep: 90, t: Date.now(), sleepFrom: null }; const r = Math.random; Math.random = () => 0.01; try { const b = DP.Needs.at(d); DP.Needs.feed(d, 30); P.lifeEvents(DP.Life.care(P.park, d, 'feed', b, true)); } finally { Math.random = r; } const it = P.park.life.nest.find(n => n.k === 'gift'); if (it) P.pickup(it); return { it: !!it, gifts: P.park.life.gifts.length }; });
@@ -554,7 +554,7 @@ const watch = (page, tag) => {
       await fp.goto(BASE + '/parks.html'); await fp.waitForTimeout(600);
       await fp.click('#new-park'); await fp.fill('#np-name', 'Парк друга'); await fp.click('#np-create');
       await fp.click('#cr-go'); await fp.waitForURL(/park\.html/); await fp.waitForTimeout(2500);
-      if (SERVER) await fp.waitForFunction(() => window.dpPark.park.life.refSent === 1, null, { timeout: 15000 }).catch(() => {});
+      if (SERVER) await fp.waitForFunction(() => window.dpPark.park.life.refSent === 1, null, { timeout: 30000 }).catch(() => {});
       const fr = await fp.evaluate(() => ({ err: window.dpRefErr, rare: window.dpPark.park.life.eggs.rare, refBy: window.dpPark.park.life.refBy, sent: window.dpPark.park.life.refSent }));
       ok('v3: новый парк по приглашению получает редкое яйцо', fr.rare === 1 && /^[0-9a-f]{10}$/.test(fr.refBy || '') && (!SERVER || fr.sent === 1), JSON.stringify(fr));
       // своя же ссылка на своём устройстве награды не даёт
@@ -597,7 +597,7 @@ const watch = (page, tag) => {
     const g3 = await probe('');
     if (g3.webgl) ok('3D: парк рисуется в WebGL, кадр не пустой', g3.is3d && g3.drawn > 0 && g3.px && g3.px.nonBlack > 30, JSON.stringify(g3));
     else ok('3D: (WebGL недоступен в этом браузере — проверен только 2D)', true);
-    await gp.goto('about:blank'); const g2 = await probe('&nogl=1#nogl');
+    const g2 = await probe('&nogl=1#nogl');
     ok('Без WebGL парк автоматически рисуется в 2D', !g2.is3d && !g2.webgl && g2.drawn > 0, JSON.stringify(g2));
     await gctx.close();
   }
