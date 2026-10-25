@@ -1074,10 +1074,11 @@ window.DP = window.DP || {};
       const fps = this.opts.maxFps || Scene.PERF.maxFps;
       if (fps && now - this._lastFrame < 1000 / fps - 2) return; // ограничение частоты кадров на слабых устройствах
       this._lastFrame = now;
-      const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
+      // медленный кадр (слабый телефон, тяжёлая 3D-сцена): логику догоняем шагами ≤ 50 мс, но не больше 150 мс за кадр
+      const dt = Math.min(0.15, Math.max(0, (now - this.last) / 1000)); this.last = now;
       if (this._offscreen || document.hidden || !this.c.width) return; // сцену не видно — не тратим батарею
-      this.t += dt;
-      if (!this.paused) { this.updateCam(dt); this.update(dt); this.draw(); }
+      this.t += dt; this.frames = (this.frames || 0) + 1;
+      if (!this.paused) { this.updateCam(dt); for (let left = dt; left > 1e-4; left -= 0.05) this.update(Math.min(0.05, left)); this.draw(); }
     }
   }
   // Профиль производительности: телефоны/планшеты (сенсорный экран, маленький экран) и «экономия энергии»
