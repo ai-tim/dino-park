@@ -302,3 +302,10 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 30px; }
 textarea.field { resize: vertical; min-height: 96px; font-family: inherit; }
 @media (max-width: 420px) { .egg-cell .e { font-size: 24px; } .egg-cell b { font-size: 18px; } .shop, .ach-grid, .mam-list { grid-template-columns: 1fr 1fr; } .mini-btn { width: 36px; height: 36px; font-size: 16px; } .dino-row2 .ava { width: 48px; } }
 button.dino-tile { color: #fff; font: inherit; cursor: pointer; width: 100%; }
+
+/* v3: на телефоне панели плотнее (сцена не просвечивает), а всплывающие сообщения — снизу, чтобы не закрывать заголовки */
+@media (max-width: 600px) {
+  .overlay .panel { background: var(--panel-strong); }
+  .toast { top: auto; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 30px); }
+  .toast.show { transform: translate(-50%, 0); }
+}

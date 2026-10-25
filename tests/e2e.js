@@ -452,7 +452,7 @@ const watch = (page, tag) => {
     }
     // обмен и шапки
     await vp.evaluate(() => { const L = window.dpPark.park.life; L.eggs.common = 12; L.eggs.rare = 0; window.dpPark.screens.eggs(); }); await vp.waitForTimeout(300);
-    await vp.screenshot({ path: path.join(SHOTS, 'v3-eggs.png') });
+    if (!SERVER) await vp.screenshot({ path: path.join(SHOTS, 'v3-eggs.png') });
     await vp.click('[data-trade]'); await vp.waitForTimeout(300);
     const tr = await vp.evaluate(() => ({ ...window.dpPark.park.life.eggs }));
     ok('v3: обмен 6 обычных → 1 редкое', tr.common === 6 && tr.rare === 1, JSON.stringify(tr));
@@ -473,9 +473,9 @@ const watch = (page, tag) => {
     ok('v3: зверьки-соседи живут в парке', tribe.mam === 5 && tribe.crit >= 8, `зверьков ${tribe.mam}, на сцене ${tribe.crit}`);
     await vp.evaluate(() => window.dpPark.screens.tribe()); await vp.waitForTimeout(300);
     ok('v3: окно «Соседи и племя» с деревом навыков', (await vp.$$eval('.sk', e => e.length)) >= 13);
-    await vp.screenshot({ path: path.join(SHOTS, 'v3-tribe.png') });
+    if (!SERVER) await vp.screenshot({ path: path.join(SHOTS, 'v3-tribe.png') });
     await vp.evaluate(() => DP.ui.close()); await vp.waitForTimeout(1500);
-    await vp.screenshot({ path: path.join(SHOTS, 'v3-park.png') });
+    if (!SERVER) await vp.screenshot({ path: path.join(SHOTS, 'v3-park.png') });
     // прятки: найти
     const hid = await vp.evaluate(() => { const e = window.dpScene.ents.find(x => x.habitat === 'ground' && x.state === 'wander'); window.dpScene.food = []; return e && window.dpPark.startHide(e.uid) ? e.uid : null; });
     await vp.waitForFunction((u) => { const e = window.dpScene.ent(u); return e && e.state === 'hidden'; }, hid, { timeout: 20000 }).catch(() => {});
@@ -497,7 +497,7 @@ const watch = (page, tag) => {
     await vp.click('#hud-ach'); await vp.waitForTimeout(300);
     const ach = await vp.evaluate(() => ({ all: document.querySelectorAll('.ach').length, got: document.querySelectorAll('.ach.done').length, life: window.dpPark.park.life.ach.length }));
     ok('v3: окно достижений (25 штук, часть получена)', ach.all === 25 && ach.got === ach.life && ach.got >= 5, JSON.stringify(ach));
-    await vp.screenshot({ path: path.join(SHOTS, 'v3-achievements.png') });
+    if (!SERVER) await vp.screenshot({ path: path.join(SHOTS, 'v3-achievements.png') });
     // подарочные коды администратора
     if (priv) {
       const code = makeCode({ n: 'e2e' + Date.now(), g: { k: 'eggs', r: 'rare', q: 3 }, m: 'Тестовый подарок' });
@@ -512,7 +512,7 @@ const watch = (page, tag) => {
       const other = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey;
       await vp.fill('#gift-code', makeCode({ n: 'forged' + Date.now(), g: { k: 'legend' } }, other)); await vp.click('#gift-redeem'); await vp.waitForTimeout(800);
       ok('v3: поддельный код отклоняется', /ненастоящий/.test(await vp.textContent('#gift-msg')));
-      await vp.screenshot({ path: path.join(SHOTS, 'v3-gifts.png') });
+      if (!SERVER) await vp.screenshot({ path: path.join(SHOTS, 'v3-gifts.png') });
       // ссылка ?gift= открывает окно подарков с кодом
       const pid = await vp.evaluate(() => window.dpPark.park.id);
       const hcode = makeCode({ n: 'link' + Date.now(), g: { k: 'hat', h: 'crown' }, p: pid });
@@ -554,7 +554,8 @@ const watch = (page, tag) => {
       await fp.goto(BASE + '/parks.html'); await fp.waitForTimeout(600);
       await fp.click('#new-park'); await fp.fill('#np-name', 'Парк друга'); await fp.click('#np-create');
       await fp.click('#cr-go'); await fp.waitForURL(/park\.html/); await fp.waitForTimeout(2500);
-      const fr = await fp.evaluate(() => ({ rare: window.dpPark.park.life.eggs.rare, refBy: window.dpPark.park.life.refBy, sent: window.dpPark.park.life.refSent }));
+      if (SERVER) await fp.waitForFunction(() => window.dpPark.park.life.refSent === 1, null, { timeout: 15000 }).catch(() => {});
+      const fr = await fp.evaluate(() => ({ err: window.dpRefErr, rare: window.dpPark.park.life.eggs.rare, refBy: window.dpPark.park.life.refBy, sent: window.dpPark.park.life.refSent }));
       ok('v3: новый парк по приглашению получает редкое яйцо', fr.rare === 1 && /^[0-9a-f]{10}$/.test(fr.refBy || '') && (!SERVER || fr.sent === 1), JSON.stringify(fr));
       // своя же ссылка на своём устройстве награды не даёт
       await vp.goto(url.trim()); await vp.waitForTimeout(600); await vp.goto(BASE + '/parks.html'); await vp.waitForTimeout(400);
@@ -582,7 +583,7 @@ const watch = (page, tag) => {
     await vp.evaluate(() => { sessionStorage.setItem('keepNews', '1'); localStorage.removeItem('dp_news_v3'); });
     await vp.reload(); await vp.waitForTimeout(1800);
     ok('v3: «Что нового в парке» открывается при входе', await vp.isVisible('.news'));
-    await vp.screenshot({ path: path.join(SHOTS, 'v3-news.png') });
+    if (!SERVER) await vp.screenshot({ path: path.join(SHOTS, 'v3-news.png') });
     await vctx.close();
   }
 

@@ -368,7 +368,7 @@
         p.querySelector('#ad-show').onclick = () => { const el = p.querySelector('#ad-pin'); el.textContent = el.textContent === '••••' ? el.dataset.pin : '••••'; };
         p.querySelector('#ad-pinok').onclick = async () => {
           const msg = p.querySelector('#ad-msg');
-          try { await Y.setPin(park, p.querySelector('#ad-old').value.trim(), p.querySelector('#ad-new').value.trim()); msg.textContent = '✓ Пароль изменён. Запиши новый!'; p.querySelector('#ad-pin').dataset.pin = park.pin; }
+          try { const np = p.querySelector('#ad-new').value.trim(); await Y.setPin(park, p.querySelector('#ad-old').value.trim(), np); if (park.pin !== np) { park.pin = np; S.save(park, true); } /* пока ждали ответ, парк мог обновиться с сервера */ msg.textContent = '✓ Пароль изменён. Запиши новый!'; p.querySelector('#ad-pin').dataset.pin = park.pin; }
           catch (e) { msg.textContent = '⚠️ ' + e.message; }
         };
         p.querySelector('#ad-del').onclick = async () => {
@@ -594,7 +594,12 @@
       if (Y.mode === 'server') { // неотправленные сообщения в поддержку
         try { const list = JSON.parse(localStorage.getItem('dp_feedback') || '[]'); list.filter(x => !x.sent).slice(0, 3).forEach(x => Y.call({ t: 'feedback', text: x.text, contact: x.contact, park: x.park }).then(r => { if (r && r.ok) { x.sent = true; localStorage.setItem('dp_feedback', JSON.stringify(list)); } }).catch(() => {})); } catch (e) { /* ignore */ }
       }
-      if (L.refBy && !L.refSent && Y.mode === 'server') Y.call({ t: 'ref', ref: L.refBy, id: park.id, pin: park.pin }).then(r => { if (r && r.ok) { L.refSent = 1; commitSoon(); } }).catch(() => {});
+      if (L.refBy && !L.refSent && Y.mode === 'server') { // парк мог ещё не доехать до сервера — несколько попыток
+        let tries = 0;
+        const sendRef = () => Y.call({ t: 'ref', ref: park.life.refBy, id: park.id, pin: park.pin }).then(r => { if (r && r.ok) { park.life.refSent = 1; commitSoon(); } })
+          .catch((e) => { window.dpRefErr = e && e.message; if (++tries < 5 && !/новых парков/.test(String(e && e.message))) setTimeout(sendRef, 3000 * tries); });
+        setTimeout(sendRef, 1500);
+      }
     }
   }
   function v3Screens() {

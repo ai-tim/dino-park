@@ -93,12 +93,59 @@ const CANVAS_PROBE = () => {
   await page.evaluate(() => DP.ui && DP.ui.close && DP.ui.close()); await page.waitForTimeout(300);
   await page.screenshot({ path: SHOT });
 
+  // 4b. v3 на телефоне: верхняя панель, большой мир, перетаскивание и щипок, панели нужд и яиц, бюджет памяти
+  const hud = await page.evaluate(() => ['#hud-dinos', '#hud-eggs', '#hud-gifts', '#hud-ach', '#hud-menu'].map(s => { const el = document.querySelector(s); if (!el) return null; const r = el.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top) }; }));
+  ok('v3: верхняя панель видна и помещается в ширину', hud.every(h => h && h.l >= 0 && h.r <= dev.viewport.width && h.t < 90), JSON.stringify(hud));
+  const world = await page.evaluate(() => ({ W: Math.round(window.dpScene.W), VW: Math.round(window.dpScene.VW) }));
+  ok('v3: мир шире экрана телефона', world.W > world.VW * 1.5, JSON.stringify(world));
+  const touch = (type, id, x, y) => { const c = window.dpScene.c, r = c.getBoundingClientRect(); c.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', isPrimary: id === 1, clientX: r.left + x, clientY: r.top + y, bubbles: true, cancelable: true })); };
+  const pan = await page.evaluate(async (src) => {
+    const touch = eval(src), S = window.dpScene, x0 = S.cam.x; S.follow = null;
+    touch('pointerdown', 1, 300, 300); for (let i = 1; i <= 10; i++) { touch('pointermove', 1, 300 - i * 18, 300); await new Promise(r => setTimeout(r, 16)); } touch('pointerup', 1, 120, 300);
+    await new Promise(r => setTimeout(r, 100)); return { x0: Math.round(x0), x1: Math.round(S.cam.x) };
+  }, '(' + touch.toString() + ')');
+  ok('v3: перетаскивание пальцем двигает парк', pan.x1 > pan.x0 + 50, JSON.stringify(pan));
+  const pinch = await page.evaluate(async (src) => {
+    const touch = eval(src), S = window.dpScene, z0 = S.cam.z;
+    touch('pointerdown', 1, 150, 300); touch('pointerdown', 2, 240, 300);
+    for (let i = 1; i <= 10; i++) { touch('pointermove', 1, 150 - i * 8, 300); touch('pointermove', 2, 240 + i * 8, 300); await new Promise(r => setTimeout(r, 16)); }
+    touch('pointerup', 1, 70, 300); touch('pointerup', 2, 320, 300); await new Promise(r => setTimeout(r, 100));
+    const z1 = S.cam.z; S.resetZoom && S.resetZoom(); return { z0: +z0.toFixed(2), z1: +z1.toFixed(2) };
+  }, '(' + touch.toString() + ')');
+  ok('v3: щипок двумя пальцами приближает', pinch.z1 > pinch.z0 * 1.4, JSON.stringify(pinch));
+  await page.evaluate(() => { const e = window.dpScene.ents[0]; window.dpPark.closeUp(e.d.uid); }); await page.waitForTimeout(1500);
+  await page.screenshot({ path: path.join(SHOTS, 'mobile-v3-closeup.png') });
+  ok('v3: крупный план на телефоне', await page.evaluate(() => window.dpScene.cam.z > 1.5 && !document.querySelector('#zoombar').classList.contains('hidden')));
+  await page.evaluate(() => window.dpScene.resetZoom()); await page.waitForTimeout(600);
+  const fits = async (name, open, shot) => {
+    await page.evaluate(open); await page.waitForTimeout(700);
+    const f = await page.evaluate(() => { const p = document.querySelector('.panel:not(.hidden), .sheet, #ui .panel') || document.body; const r = p.getBoundingClientRect(); return { sw: document.documentElement.scrollWidth, vw: innerWidth, l: Math.round(r.left), r: Math.round(r.right), ow: [...p.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).length }; });
+    await page.screenshot({ path: path.join(SHOTS, shot) });
+    ok(`v3: панель «${name}» помещается по ширине`, f.sw <= f.vw && f.r <= f.vw + 1 && f.l >= -1 && f.ow === 0, JSON.stringify(f));
+  };
+  await fits('Мои динозавры', () => window.dpPark.screens.dinos(), 'mobile-v3-dinos.png');
+  await fits('Яйца', () => window.dpPark.screens.eggs(), 'mobile-v3-eggs.png');
+  await fits('Достижения', () => window.dpPark.screens.ach(), 'mobile-v3-ach.png');
+  await fits('Подарки', () => window.dpPark.screens.gifts(), 'mobile-v3-gifts.png');
+  await page.evaluate(() => DP.ui.close()); await page.waitForTimeout(300);
+  const live = await page.evaluate(() => window.__cvLive());
+  ok('v3: память холстов в парке (живые) < 60 МБ', live < 60, live + ' МБ');
+
+  // лендинг: живые холсты в бюджете iPhone
+  await page.goto(BASE + '/index.html'); await page.waitForTimeout(2500);
+  const liveL = await page.evaluate(() => window.__cvLive());
+  ok('v3: память холстов на лендинге (живые) < 60 МБ', liveL < 60, liveL + ' МБ');
+
   // 5. Повторный вход по коду и PIN
   await page.goto(BASE + '/parks.html'); await page.waitForSelector('#open-id');
   await page.fill('#open-id', creds[0]); await page.fill('#open-pin', creds[1]); await page.tap('#open-btn');
   await page.waitForURL(/park\.html\?id=/, { timeout: 15000 });
   await page.waitForFunction(() => window.dpScene && window.dpScene.ents.length >= 2, null, { timeout: 20000 });
   ok('Вход по коду и PIN на телефоне', true);
+  await page.waitForTimeout(1200);
+  const news = await page.evaluate(() => /Что нового/.test(document.body.innerText));
+  await page.screenshot({ path: path.join(SHOTS, 'mobile-v3-news.png') });
+  ok('v3: при входе в парк с динозаврами — «Что нового в парке»', news);
 
   ok('Нет ошибок JS', errors.length === 0, errors.slice(0, 5).join(' | '));
   await browser.close();
