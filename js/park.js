@@ -30,7 +30,7 @@
   document.title = 'Динопарк — ' + park.name;
 
   const canvas = $('#park');
-  const scene = new DP.Scene(canvas, {
+  const scene = DP.makeScene(canvas, {
     entrance: false, tod: U.param('tod') || localStorage.getItem('dp_tod') || 'auto',
     world: { aspect: 1.75 }, showNeeds: false, needHint: true, maxFps: DP.Scene.PERF.mobile ? 30 : 0,
     onEat: (e, f) => { // засчитывает только то устройство, которое бросило корм

@@ -503,5 +503,11 @@ window.DP = window.DP || {};
     return rigCache[key];
   }
 
-  DP.Dinos = { SPECIES, byId, LEGEND, palOf, inner, svg, url, rig, ART, VB, VIEW: { w: 400, h: 254 } };
+  /** Одна часть тела в цвете как отдельный SVG-документ (для текстур 3D-моделей); scale — пикселей на единицу рисунка */
+  function partDoc(id, i, paletteIndex, scale) {
+    const sp = byId[id], pal = palOf(sp, paletteIndex), u = 'x' + id.slice(0, 3) + (paletteIndex || 0) + '_' + i;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${VB.x} ${VB.y} ${VB.w} ${VB.h}" width="${Math.round(VB.w * scale)}" height="${Math.round(VB.h * scale)}">${defs(u, pal)}${partInner(id, ART[id][i], 'color', pal, u)}</svg>`;
+  }
+
+  DP.Dinos = { SPECIES, byId, LEGEND, palOf, inner, svg, url, rig, ART, VB, VIEW: { w: 400, h: 254 }, partDoc, enc, dark, mix, OUTLINE_TYPES };
 })();

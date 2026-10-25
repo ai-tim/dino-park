@@ -11,7 +11,7 @@ window.DP = window.DP || {};
 
   class Scene {
     constructor(canvas, opts) {
-      this.c = canvas; this.ctx = canvas.getContext('2d');
+      this.c = canvas; this.ctx = this.makeCtx(canvas);
       this.opts = opts || {};
       this.ents = []; this.food = []; this.parts = []; this.balls = []; this.showNeeds = this.opts.showNeeds !== false; this.needT = 0;
       // камера: мир может быть больше экрана (opts.world) — тогда парк листается пальцем и приближается щипком
@@ -32,6 +32,15 @@ window.DP = window.DP || {};
       this.resize(true); Scene.all.push(this);
       if (this.opts.world) this.attachGestures();
       this.loop = this.loop.bind(this); requestAnimationFrame(this.loop);
+    }
+    /** Контекст рисования (3D-сцена подменяет его маленьким вспомогательным холстом) */
+    makeCtx(canvas) { return canvas.getContext('2d'); }
+    /** Остановить сцену насовсем: снять обработчики и убрать из списка */
+    destroy() {
+      this._dead = true; window.removeEventListener('resize', this._onResize); window.removeEventListener('orientationchange', this._onResize);
+      if (this._io) { try { this._io.disconnect(); } catch (e) { /* ignore */ } }
+      const i = Scene.all.indexOf(this); if (i >= 0) Scene.all.splice(i, 1);
+      this.release();
     }
     /** Плотность пикселей: не больше 2 и не больше бюджета пикселей (на телефонах — меньше, чтобы не упереться в лимит памяти Safari) */
     pickDpr(w, h) {
@@ -295,6 +304,16 @@ window.DP = window.DP || {};
       };
       e.flip = e.facing;
       Object.assign(e, { heading: Math.random() * TAU, wA: 0, spd: 0.6, spdT: 0.6, mode: 'walk', modeT: U().rand(1, 4), act: null, headA: 0 });
+      this.loadArt(e, d, sp);
+      if (this.opts.entrance !== false) { // забегает из-за края
+        const v = this.view(); e.x = Math.random() < 0.5 ? v.x0 - this.baseW() : v.x1 + this.baseW();
+        if (habitat === 'water') e.x = U().rand(this.zone('water').x0, this.zone('water').x1);
+        e.enter = 1;
+      }
+      return e;
+    }
+    /** Загрузка картинки динозавра: готовый — марионетка из частей, нарисованный ребёнком — спрайт */
+    loadArt(e, d, sp) {
       if (!d.sprite && sp && DP.Dinos.rig) {
         e.rig = DP.Dinos.rig(sp.id, d.palette || 0);
         const VB = e.rig.VB; e.aspect = VB.h / VB.w;
@@ -303,12 +322,6 @@ window.DP = window.DP || {};
         e.img.onload = () => { e.ready = true; e.aspect = e.img.naturalHeight / e.img.naturalWidth || 0.65; };
         e.img.src = d.sprite || DP.Dinos.url(d.species, d.palette || 0);
       }
-      if (this.opts.entrance !== false) { // забегает из-за края
-        const v = this.view(); e.x = Math.random() < 0.5 ? v.x0 - this.baseW() : v.x1 + this.baseW();
-        if (habitat === 'water') e.x = U().rand(this.zone('water').x0, this.zone('water').x1);
-        e.enter = 1;
-      }
-      return e;
     }
     hit(x, y) {
       const sorted = this.ents.slice().sort((a, b) => b.y - a.y);
@@ -1056,6 +1069,7 @@ window.DP = window.DP || {};
     }
     sparkle(x, y) { for (let i = 0; i < 6; i++) this.parts.push({ kind: 'spark', x: x + U().rand(-14, 14), y: y - U().rand(0, 16), vx: U().rand(-14, 14), vy: U().rand(-30, -8), t: 0, life: 0.9, s: U().rand(0.6, 1.2) }); }
     loop(now) {
+      if (this._dead) return;
       requestAnimationFrame(this.loop);
       const fps = this.opts.maxFps || Scene.PERF.maxFps;
       if (fps && now - this._lastFrame < 1000 / fps - 2) return; // ограничение частоты кадров на слабых устройствах
@@ -1084,4 +1098,6 @@ window.DP = window.DP || {};
   window.addEventListener('pagehide', () => Scene.all.forEach(sc => sc.release()));
   window.addEventListener('pageshow', (ev) => { if (ev.persisted) Scene.all.forEach(sc => sc.resize(true)); });
   DP.Scene = Scene;
+  // фабрика сцены: 3D-движок (scene3d.js) подменяет её, если WebGL доступен
+  DP.makeScene = DP.makeScene || ((canvas, opts) => new Scene(canvas, opts));
 })();

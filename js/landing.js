@@ -11,7 +11,7 @@
   };
   const dinos = (loc) => (cast[loc] || cast.jungle).map((sp, i) => ({ uid: loc + i, species: sp, palette: i % 2, needs: DP.Needs ? DP.Needs.fresh(Date.now()) : null, loc }));
   const PERF = DP.Scene.PERF, still = PERF.reduce || /[?&]still=1/.test(location.search);
-  const hero = new DP.Scene($('#hero-scene'), { entrance: false, tod: 'day', bg: LOCS[0].id, maxFps: PERF.mobile ? 30 : 0 });
+  const hero = DP.makeScene($('#hero-scene'), { entrance: false, tod: 'day', bg: LOCS[0].id, maxFps: PERF.mobile ? 30 : 0 });
   hero.showNeeds = false;
   let i = 0;
   function show(k) {
@@ -26,7 +26,7 @@
     i++; $('#hero-scene').classList.add('fade'); setTimeout(() => { show(i); $('#hero-scene').classList.remove('fade'); }, 600);
   }, PERF.mobile ? 12000 : 9000);
   // тап по динозавру в шапке — он подпрыгивает
-  $('#hero-scene').addEventListener('click', (e) => { const r = e.target.getBoundingClientRect(); const en = hero.hit(e.clientX - r.left, e.clientY - r.top); if (en) hero.jump(en.uid); });
+  $('#hero-scene').addEventListener('click', (e) => { const r = e.target.getBoundingClientRect(); const en = hero.hitScreen(e.clientX - r.left, e.clientY - r.top); if (en) hero.jump(en.uid); });
 
   // мини-телевизор: запускаем, только когда до него долистали
   const api = { hero, tv: null, show };

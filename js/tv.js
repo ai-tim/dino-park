@@ -22,7 +22,7 @@
   function show(p) {
     park = p;
     $('#join').classList.add('hidden'); $('#park').classList.remove('hidden'); $('#bar').classList.remove('hidden'); $('#tvname').classList.remove('hidden');
-    if (!scene) { scene = new DP.Scene($('#park'), { entrance: false, tod: U.param('tod') || 'auto', showNeeds: false, needHint: true }); window.dpScene = scene; }
+    if (!scene) { scene = DP.makeScene($('#park'), { entrance: false, tod: U.param('tod') || 'auto', showNeeds: false, needHint: true }); window.dpScene = scene; }
     scene.resize(); render(p); scene.opts.entrance = true;
     sessionStorage.setItem('dp_tv', JSON.stringify({ id: p.id, token: Y.tvToken || null }));
     wake();
