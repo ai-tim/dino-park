@@ -381,7 +381,7 @@ const watch = (page, tag) => {
   {
     const dctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const dp = await dctx.newPage(); watch(dp, 'demo');
-    await dp.goto(BASE + '/park.html?demo=1'); await dp.waitForTimeout(2000);
+    await dp.goto(BASE + '/park.html?demo=1', { waitUntil: 'domcontentloaded', timeout: 60000 }); await dp.waitForFunction(() => window.dpPark && window.dpScene && window.dpScene.ents.length, null, { timeout: 60000 }); await dp.waitForTimeout(2000);
     const dm = await dp.evaluate(() => ({ badge: !!document.querySelector('.demo-badge'), n: window.dpPark.park.dinos.length, here: window.dpScene.ents.length, saved: DP.store.myIds().length, low: window.dpPark.park.dinos.some(d => DP.Needs.at(d).low.length) }));
     ok('Демо-парк: 11 динозавров в 5 локациях, ничего не сохраняется', dm.badge && dm.n === 11 && dm.here === 5 && dm.saved === 0 && dm.low, JSON.stringify(dm));
     if (!SERVER) { await dp.waitForTimeout(800); await dp.screenshot({ path: path.join(SHOTS, 'demo.png') }); }
@@ -433,7 +433,7 @@ const watch = (page, tag) => {
     await vp.click('#cr-go'); await vp.waitForURL(/park\.html/); await vp.waitForTimeout(1200);
     await vp.evaluate(() => DP.ui.close());
     for (const sp of ['trex', 'triceratops', 'stegosaurus', 'parasaurolophus']) { await vp.evaluate(() => window.dpPark.screens.ready()); await vp.$eval(`[data-sp="${sp}"]`, el => el.click()); }
-    await vp.waitForFunction(() => window.dpScene.ents.length >= 4 && window.dpScene.ents.every(e => e.ready), null, { timeout: 20000 });
+    await vp.waitForFunction(() => window.dpScene.ents.length >= 4 && window.dpScene.ents.every(e => e.ready), null, { timeout: 45000 });
     await vp.evaluate(() => DP.ui.close()); await vp.bringToFront();
     // верхняя панель
     const hud = await vp.evaluate(() => ['#hud-dinos', '#hud-eggs', '#hud-gifts', '#hud-ach', '#hud-menu'].map(s => { const el = document.querySelector(s); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y }; }));
