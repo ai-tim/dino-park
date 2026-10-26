@@ -109,7 +109,8 @@ const b64u = (b) => Buffer.from(b).toString('base64url');
   await gp.waitForSelector('#gf-ok', { timeout: 20000 }).catch(() => null);
   const aModal = await gp.evaluate(() => { const m = document.querySelector('#gf-ok'); return m ? m.closest('.modal, .sheet, body').textContent : ''; });
   const a1 = await life();
-  ok('парк А: получил подарок всем и сюрприз', /Только для А/.test(aModal) && /Всем привет/.test(aModal) && a1.c === a0.c + 5 && a1.gifts >= a0.gifts + 1, aModal.replace(/\s+/g, ' ').slice(0, 80));
+  ok('парк А: получил подарок всем и сюрприз', /Только для А/.test(aModal) && /Всем привет/.test(aModal) && a1.c - a0.c >= 5 && a1.c - a0.c <= 6 && a1.gifts >= a0.gifts + 1, aModal.replace(/\s+/g, ' ').slice(0, 80));
+  ok('парк А: сюрприз «легендарный динозавр» — золотой динозавр сразу в парке', await gp.evaluate(() => window.dpPark.park.dinos.filter(d => d.legend).length === 1 && !((window.dpPark.park.life.tokens || {}).legend > 0)));
   await gp.tap('#gf-ok').catch(() => {}); await closeUi();
   // короткие коды
   const enter = async (code) => {
