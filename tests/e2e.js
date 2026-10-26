@@ -54,10 +54,23 @@ const watch = (page, tag) => {
 
   // 3. Меню по нажатию на парк
   await page.mouse.click(683, 200); await page.waitForTimeout(400);
-  ok('Меню открывается по нажатию', await page.isVisible('.row[data-go="photo"]'));
-  const rowsIds = await page.$$eval('.row[data-go]', els => els.map(e => e.dataset.go));
-  ok('Меню: Покормить всех / Тайно / Локации / Админ', ['feedall', 'secret', 'locs', 'admin', 'dinos'].every(x => rowsIds.includes(x)), rowsIds.join(','));
+  ok('Меню открывается по нажатию', await page.isVisible('#m-tiles'));
+  const qaIds = await page.$$eval('#m-qa [data-go]', els => els.map(e => e.dataset.go));
+  ok('Меню: быстрые действия — покормить всех, тайно своих, уложить спать, поиграть со всеми', ['feedall', 'secret', 'sleepall', 'playall'].every(x => qaIds.includes(x)), qaIds.join(','));
+  const secIds = await page.$$eval('#m-tiles [data-sec]', els => els.map(e => e.dataset.sec));
+  ok('Меню: шесть разделов', ['dinos', 'acts', 'locs', 'rewards', 'tv', 'more'].every(x => secIds.includes(x)) && secIds.length === 6, secIds.join(','));
+  const menuFits = await page.evaluate(() => { const p = document.querySelector('.overlay .panel'); return p.scrollHeight <= p.clientHeight + 2; });
+  ok('Меню: помещается без прокрутки', menuFits);
   if (!SERVER) await page.screenshot({ path: path.join(SHOTS, 'menu.png') });
+  // все пункты доступны через разделы
+  const allIds = [];
+  for (const sec of ['dinos', 'acts', 'locs', 'rewards', 'more']) {
+    await page.evaluate((s) => window.dpPark.screens.section(s), sec); await page.waitForTimeout(80);
+    allIds.push(...await page.$$eval('.row[data-go]', els => els.map(e => e.dataset.go)));
+  }
+  ok('Разделы меню: доступны все функции', ['dinos', 'photo', 'ready', 'coloring', 'cleanup', 'feedall', 'secret', 'sleepall', 'playall', 'hide', 'locs', 'bg', 'eggs', 'gifts', 'ach', 'tribe', 'news', 'invite', 'music', 'voices', 'admin', 'parks', 'support'].every(x => allIds.includes(x)), allIds.join(','));
+  await page.evaluate(() => window.dpPark.screens.section('acts')); await page.click('.panel-head .back, [data-back]').catch(() => {}); await page.waitForTimeout(150);
+  ok('Раздел: «Назад» возвращает в меню', await page.isVisible('#m-tiles'));
   await page.evaluate(() => window.dpPark.screens.dinos()); await page.waitForTimeout(200);
   ok('Пустое состояние списка динозавров', (await page.textContent('.empty')).includes('пока никого'));
 
@@ -341,6 +354,7 @@ const watch = (page, tag) => {
   ok('Музыка: настройка сохраняется после перезагрузки', m2.text === '🔇' && !m2.on, JSON.stringify(m2));
   for (const [x, y] of [[683, 200], [60, 60], [1300, 60], [683, 120], [300, 300]]) { // мимо летающих динозавров
     await page.mouse.click(x, y); await page.waitForTimeout(350);
+    if (await page.isVisible('#m-tiles')) { await page.click('[data-sec="more"]'); await page.waitForTimeout(200); }
     if (await page.isVisible('.row[data-go="music"]')) break;
     await page.evaluate(() => DP.ui.close && DP.ui.close()); await page.waitForTimeout(200);
   }
@@ -420,9 +434,9 @@ const watch = (page, tag) => {
     const hud = await vp.evaluate(() => ['#hud-dinos', '#hud-eggs', '#hud-gifts', '#hud-ach', '#hud-menu'].map(s => { const el = document.querySelector(s); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y }; }));
     ok('v3: верхняя панель (динозавры, яйца, подарки, достижения, меню) справа сверху', hud.every(h => h && h.y < 80 && h.x > 683), JSON.stringify(hud));
     // нужды не показываются над головами, есть отдельная панель
-    ok('v3: шкалы нужд не рисуются над динозаврами', await vp.evaluate(() => window.dpScene.opts.showNeeds === false));
+    ok('v4: над динозаврами нет ни шкал, ни точек, ни облачков с желаниями', await vp.evaluate(() => window.dpScene.opts.showNeeds === false && window.dpScene.opts.needHint === false && !/Хочу есть|Скучно…/.test(String(DP.Scene)) ));
     await vp.click('#hud-dinos'); await vp.waitForTimeout(300);
-    const dn = await vp.evaluate(() => ({ rows: document.querySelectorAll('.dino-row2').length, bars: document.querySelectorAll('.dino-row2 .mb').length, btns: ['#dn-feedall', '#dn-playall', '#dn-sleepall'].every(s => document.querySelector(s)) }));
+    const dn = await vp.evaluate(() => ({ rows: document.querySelectorAll('.dino-row2').length, bars: document.querySelectorAll('.dino-row2 .mb').length, btns: ['#dn-feedall', '#dn-secret', '#dn-playall', '#dn-sleepall'].every(s => document.querySelector(s)) }));
     ok('v3: панель «Мои динозавры» с нуждами и кнопками для всех', dn.rows === 4 && dn.bars >= 12 && dn.btns, JSON.stringify(dn));
     await vp.evaluate(() => { const d = window.dpPark.park.dinos[0]; d.needs = { food: 20, play: 90, sleep: 90, t: Date.now(), sleepFrom: null }; window.dpPark.screens.dinos(); });
     await vp.waitForTimeout(200);

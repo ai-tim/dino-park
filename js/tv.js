@@ -14,7 +14,7 @@
   // экранная клавиатура: удобно с пульта (стрелки + OK)
   const kp = $('#kp');
   ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', 'OK'].forEach((k) => {
-    const b = document.createElement('button'); b.textContent = k; b.type = 'button'; if (k === 'OK') b.className = 'ok';
+    const b = document.createElement('button'); b.textContent = k; b.type = 'button'; b.setAttribute('data-k', k); if (k === 'OK') b.className = 'ok';
     b.onclick = () => { const f = $('#code'); if (k === '⌫') f.value = f.value.slice(0, -1); else if (k === 'OK') join(f.value.trim()); else if (f.value.length < 5) { f.value += k; if (f.value.length === 5) join(f.value); } };
     kp.appendChild(b);
   });

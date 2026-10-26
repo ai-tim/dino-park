@@ -3,6 +3,14 @@
   "private": true,
   "license": "UNLICENSED",
   "description": "Автотесты Динопарка (headless Chrome через playwright-core)",
-  "scripts": { "test": "node e2e.js" },
-  "dependencies": { "playwright-core": "^1.48.0" }
+  "scripts": {
+    "test": "node e2e.js",
+    "mobile": "node mobile.js",
+    "tv": "node tv-relay.js",
+    "compat": "node compat.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.48.0",
+    "acorn": "^8.11.0"
+  }
 }
