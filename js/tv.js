@@ -55,9 +55,15 @@
       if (document.hidden) return;
       bad = fps < 14 ? bad + 1 : 0;
       if (bad >= 3 && !U.param('r')) {
-        clearInterval(iv); try { localStorage.setItem('dp.render', '2d'); } catch (e) { /* ignore */ }
+        clearInterval(iv);
+        // шаг 1: упрощённое 3D (меньше деревьев и травы); шаг 2: лёгкая 2D-графика
+        const P = DP.Scene.PERF, step1 = P.quality !== 'low' && !U.param('q');
+        try { if (step1) localStorage.setItem('dp.q', 'low'); else localStorage.setItem('dp.render', '2d'); } catch (e) { /* ignore */ }
+        if (step1) P.quality = 'low';
         scene.destroy(); const c = $('#park'), nc = c.cloneNode(false); c.parentNode.replaceChild(nc, c);
-        shownView = null; makeScene(); scene.resize(); render(park); announce('🖼️ Включена лёгкая графика для этого телевизора');
+        shownView = null; makeScene(); scene.resize(); render(park);
+        announce(step1 ? '🖼️ Графика упрощена для плавности' : '🖼️ Включена лёгкая графика для этого телевизора');
+        if (step1) watchFps();
       }
     }, 2000);
   }

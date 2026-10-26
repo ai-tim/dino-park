@@ -1060,7 +1060,8 @@ window.DP = window.DP || {};
     const tv = /Web0S|webOS|SmartTV|SMART-TV|Tizen|NetCast|BRAVIA|HbbTV/i.test(navigator.userAgent || '');
     // уровень детализации 3D: low — телефоны, mid — телевизоры и слабые ПК, high — компьютеры; ?q=low|mid|high — вручную
     const qp = /[?&]q=(low|mid|high)\b/.exec(location.search || '');
-    const quality = qp ? qp[1] : mobile || lowMem ? 'low' : tv || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) ? 'mid' : 'high';
+    let saved = null; try { saved = /^(low|mid)$/.test(localStorage.getItem('dp.q') || '') ? localStorage.getItem('dp.q') : null; } catch (e) { /* ignore */ }
+    const quality = qp ? qp[1] : saved ? saved : mobile || lowMem ? 'low' : tv || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) ? 'mid' : 'high';
     return { mobile, tv, quality, reduce, maxDpr: tv ? 1 : 2, maxPixels: mobile ? (lowMem ? 0.9e6 : 1.4e6) : tv ? 2.1e6 : 4.5e6, maxFps: reduce || lowMem || tv ? 30 : 0 };
   })();
   Scene.all = [];
