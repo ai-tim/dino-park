@@ -49,6 +49,7 @@ const UA = 'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like G
     const now = Date.now(), fps = (st.f - pf) * 1000 / (now - pt); pf = st.f; pt = now;
     series.push(Object.assign({ fps: +fps.toFixed(1) }, st));
   }
+  if (process.env.SHOT) await tv.screenshot({ path: process.env.SHOT });
   if (process.env.EVAL) console.log('EVAL', JSON.stringify(await tv.evaluate(process.env.EVAL)));
   const res = await tv.evaluate(() => { const s = window.dpScene, iv = window.__raf.slice(-600).sort((a, b) => a - b); const g = s.gpuStats ? s.gpuStats() : null;
     return { dbg: { lf: s._lastFrame, now: performance.now(), last: s.last, dead2: s._dead, off: s._offscreen, hid: document.hidden, w: s.c.width, paused: s.paused, dead: s._dead, t: s.t, ents: s.ents.length }, programs: s.renderer && s.renderer.info.programs ? s.renderer.info.programs.length : null, rafMed: iv[Math.floor(iv.length / 2)], raf95: iv[Math.floor(iv.length * 0.95)], long: window.__raf.filter(x => x > 250).length, gpu: g && { calls: g.calls, tris: g.triangles, tex: g.textures, geo: g.geometries, size: g.size, totalMB: g.totalMB, aa: g.aa, shadow: g.shadow }, heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0, scenes: DP.Scene.all.length, mode: window.DPBOOT && window.DPBOOT.mode }; });

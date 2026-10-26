@@ -36,7 +36,7 @@
   function show(p) {
     park = p;
     $('#join').classList.add('hidden'); $('#park').classList.remove('hidden'); $('#bar').classList.remove('hidden'); $('#tvname').classList.remove('hidden');
-    if (!scene) { makeScene(); watchFps(); qLabel(); }
+    if (!scene) { makeScene(); watchFps(); qLabel(); if (!can3d()) $('#tvq').classList.add('hidden'); }
     scene.resize(); render(p); scene.opts.entrance = true;
     sessionStorage.setItem('dp_tv', JSON.stringify({ id: p.id, token: Y.tvToken || null, relay: !!Y.tvRelay }));
     wake(); linkState();
@@ -45,8 +45,8 @@
   // (тени уже выключены → простые шейдеры → меньше буфер и реже трава → 2D). Найденная ступень хранится 36 ч (dp.tvq).
   // Вручную: кнопка «⚙️ Качество» на экране ТВ (пульт: стрелки + OK) или в телефоне: ☰ → 📺 ТВ. ———
   const SC = DP.Scene, P = SC.PERF, MODES = { auto: 'Авто', smooth: 'Плавно', pretty: 'Красиво' };
-  const tvLadder = () => !!P.tvL;
-  window.dpTvQ = { get level() { return P.tvLevel; }, get mode() { return P.tvMode || 'auto'; }, set: (m) => setMode(m), log: [] };
+  const tvLadder = () => !!P.tvL, can3d = () => !!DP.Scene3D && !(DP.can3D && DP.can3D.ok === false);
+  window.dpTvQ = { get level() { return P.tvLevel; }, get mode() { return P.tvMode || 'auto'; }, set: (m) => setMode(m), step: (l) => setLevel(l), log: [] }; // step — для проверок
   function qLabel() { const b = $('#tvq'); if (b) b.textContent = '⚙️ Качество: ' + (MODES[P.tvMode] || 'Авто'); }
   function rebuildScene() {
     if (scene) scene.destroy(); const c = $('#park'), nc = c.cloneNode(false); c.parentNode.replaceChild(nc, c);
@@ -73,7 +73,7 @@
     clearInterval(watchIv); watchIv = null;
     if (!scene || U.param('r') || U.param('q')) return;
     if (!tvLadder()) return watchFpsOld();
-    if (P.tvMode !== 'auto') return;
+    if (P.tvMode !== 'auto' || !can3d()) return; // старый ТВ без WebGL2 (наследная сборка) — только 2D, перебирать нечего
     // замер: ждём 3 кадра (компиляция шейдеров), затем окно 3 с; потом — окна по 10 с (долгая проверка)
     let f0 = -1, t0 = 0, probe = true, slow = 0, prev = null, wait = 0, no2d = SC.tvqLoad().no2d; // prev: {lvl, fps} — с какой ступени и с каким результатом ушли
     watchIv = setInterval(() => {
