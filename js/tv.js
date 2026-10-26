@@ -45,25 +45,27 @@
     sessionStorage.setItem('dp_tv', JSON.stringify({ id: p.id, token: Y.tvToken || null, relay: !!Y.tvRelay }));
     wake(); linkState();
   }
-  // слабая видеокарта телевизора: если 3D тормозит (меньше 14 кадров/с), сами переходим на лёгкую 2D-графику
+  // слабая видеокарта телевизора. v5: сначала сцена сама снижает разрешение (Scene3D.adaptRes, обратимо). Если и это не помогло —
+  // после 10 с разогрева и 5 замеров подряд (10 с) меньше 12 кадров/с: шаг 1 — детализация ниже, шаг 2 — 2D.
+  // Решение хранится 36 ч (dp.perf), потом телевизор снова пробует полное качество.
   function watchFps() {
     if (!scene.is3d) return;
     let f0 = scene.frames || 0, t0 = Date.now(), bad = 0;
+    const warm = Date.now() + 10000;
     const iv = setInterval(() => {
       if (!scene || !scene.is3d) return clearInterval(iv);
       const fps = ((scene.frames || 0) - f0) * 1000 / (Date.now() - t0); f0 = scene.frames || 0; t0 = Date.now();
-      if (document.hidden) return;
-      bad = fps < 14 ? bad + 1 : 0;
-      if (bad >= 3 && !U.param('r')) {
+      if (document.hidden || Date.now() < warm) { bad = 0; return; }
+      bad = fps < 12 && (scene._rs || 1) <= 0.6 ? bad + 1 : 0;
+      if (bad >= 5 && !U.param('r') && !U.param('q')) {
         clearInterval(iv);
-        // шаг 1: упрощённое 3D (меньше деревьев и травы); шаг 2: лёгкая 2D-графика
-        const P = DP.Scene.PERF, step1 = P.quality !== 'low' && !U.param('q');
-        try { if (step1) localStorage.setItem('dp.q', 'low'); else localStorage.setItem('dp.render', '2d'); } catch (e) { /* ignore */ }
-        if (step1) P.quality = 'low';
+        const P = DP.Scene.PERF, next = P.quality === 'high' ? 'mid' : P.quality === 'mid' ? 'low' : null;
+        try { localStorage.setItem('dp.perf', JSON.stringify(next ? { v: 5, q: next, t: Date.now() } : { v: 5, q: 'low', r: '2d', t: Date.now() })); } catch (e) { /* ignore */ }
+        if (next) P.quality = next; else P.render2d = true;
         scene.destroy(); const c = $('#park'), nc = c.cloneNode(false); c.parentNode.replaceChild(nc, c);
         shownView = null; makeScene(); scene.resize(); render(park);
-        announce(step1 ? '🖼️ Графика упрощена для плавности' : '🖼️ Включена лёгкая графика для этого телевизора');
-        if (step1) watchFps();
+        announce(next ? '🖼️ Графика упрощена для плавности' : '🖼️ Включена лёгкая графика для этого телевизора');
+        if (next) watchFps();
       }
     }, 2000);
   }

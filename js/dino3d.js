@@ -292,7 +292,7 @@ window.DP = window.DP || {};
   function loadImg(src) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('img')); im.src = src; }); }
   function finishTex(c, key, extra) {
     const THREE = T(), tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 1; tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = (DP.G3 && DP.G3.aniso) || 1; tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter;
     const t = Object.assign({ key, tex, canvas: c, refs: 1, bytes: c.width * c.height * 4 * 1.34 }, extra || {});
     texCache[key] = t; return t;
   }

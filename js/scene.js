@@ -1060,9 +1060,17 @@ window.DP = window.DP || {};
     const tv = /Web0S|webOS|SmartTV|SMART-TV|Tizen|NetCast|BRAVIA|HbbTV/i.test(navigator.userAgent || '');
     // уровень детализации 3D: low — телефоны, mid — телевизоры и слабые ПК, high — компьютеры; ?q=low|mid|high — вручную
     const qp = /[?&]q=(low|mid|high)\b/.exec(location.search || '');
-    let saved = null; try { saved = /^(low|mid)$/.test(localStorage.getItem('dp.q') || '') ? localStorage.getItem('dp.q') : null; } catch (e) { /* ignore */ }
+    // v5: авто-откат телевизора хранится с датой и через 36 ч забывается (раньше — навсегда: один медленный старт и ТВ
+    // оставался на «low» до очистки данных). Старые ключи v4 (dp.q / dp.render) сбрасываем один раз.
+    let saved = null, fb = null;
+    try {
+      if (localStorage.getItem('dp.q') || localStorage.getItem('dp.render')) { localStorage.removeItem('dp.q'); localStorage.removeItem('dp.render'); }
+      fb = JSON.parse(localStorage.getItem('dp.perf') || 'null');
+      if (!fb || fb.v !== 5 || !(Date.now() - fb.t < 36 * 3600e3)) { if (fb) localStorage.removeItem('dp.perf'); fb = null; }
+      saved = fb && /^(low|mid)$/.test(fb.q || '') ? fb.q : null;
+    } catch (e) { /* ignore */ }
     const quality = qp ? qp[1] : saved ? saved : mobile || lowMem ? 'low' : tv || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) ? 'mid' : 'high';
-    return { mobile, tv, quality, reduce, maxDpr: tv ? 1 : 2, maxPixels: mobile ? (lowMem ? 0.9e6 : 1.4e6) : tv ? 2.1e6 : 4.5e6, maxFps: reduce || lowMem || tv ? 30 : 0 };
+    return { mobile, tv, quality, reduce, render2d: !!(fb && fb.r === '2d'), maxDpr: 2, maxPixels: mobile ? (lowMem ? 0.9e6 : 1.4e6) : tv ? 2.2e6 : 4.5e6, maxFps: reduce || lowMem || tv ? 30 : 0 };
   })();
   Scene.all = [];
   // шапки (эмодзи) и где они сидят на голове у каждого вида: [доля ширины, доля высоты, размер]

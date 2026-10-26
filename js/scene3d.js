@@ -8,6 +8,23 @@ window.DP = window.DP || {};
   const TAU = Math.PI * 2, U = () => DP.util, T = () => window.THREE;
   if (!DP.Scene) return;
   const Base = DP.Scene, PERF = Base.PERF, D2R = Math.PI / 180;
+  // FXAA (Т. Лоттес, компактный вариант): сглаживает «лесенки» по контрасту яркости, 9 выборок — по силам телефону
+  const FXAA = `precision highp float; uniform sampler2D tDiffuse; uniform vec2 inv; varying vec2 vUv;
+    void main() {
+      vec3 L = vec3(0.299, 0.587, 0.114);
+      vec3 rgbM = texture2D(tDiffuse, vUv).rgb;
+      float lNW = dot(texture2D(tDiffuse, vUv + vec2(-1.0, -1.0) * inv).rgb, L), lNE = dot(texture2D(tDiffuse, vUv + vec2(1.0, -1.0) * inv).rgb, L);
+      float lSW = dot(texture2D(tDiffuse, vUv + vec2(-1.0, 1.0) * inv).rgb, L), lSE = dot(texture2D(tDiffuse, vUv + vec2(1.0, 1.0) * inv).rgb, L);
+      float lM = dot(rgbM, L), lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE))), lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+      if (lMax - lMin < max(0.0312, lMax * 0.125)) { gl_FragColor = vec4(rgbM, 1.0); return; }
+      vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), ((lNW + lSW) - (lNE + lSE)));
+      float red = max((lNW + lNE + lSW + lSE) * 0.03125, 1.0 / 128.0), rcp = 1.0 / (min(abs(dir.x), abs(dir.y)) + red);
+      dir = clamp(dir * rcp, -8.0, 8.0) * inv;
+      vec3 A = 0.5 * (texture2D(tDiffuse, vUv + dir * (1.0 / 3.0 - 0.5)).rgb + texture2D(tDiffuse, vUv + dir * (2.0 / 3.0 - 0.5)).rgb);
+      vec3 B = A * 0.5 + 0.25 * (texture2D(tDiffuse, vUv - dir * 0.5).rgb + texture2D(tDiffuse, vUv + dir * 0.5).rgb);
+      float lB = dot(B, L);
+      gl_FragColor = vec4((lB < lMin || lB > lMax) ? A : B, 1.0);
+    }`;
 
   class Scene3D extends Base {
     constructor(canvas, opts) {
@@ -16,10 +33,66 @@ window.DP = window.DP || {};
       if (!this.opts.maxFps && PERF.mobile) this.opts.maxFps = 30; // телефоны: 30 кадров в секунду — плавно и бережёт батарею
     }
     makeCtx() { this._aux = document.createElement('canvas'); this._aux.width = this._aux.height = 4; return this._aux.getContext('2d'); }
+    /** v5: чёткость. Раньше: телевизор — не больше 1 пикселя на CSS-пиксель и бюджет 1,6 Мп (на 1920×1080 рисовали ~1690×950
+     *  и растягивали — отсюда «мыло»), телефон — ~1,0 Мп без сглаживания. Теперь: родное разрешение экрана (ТВ 1920×1080,
+     *  телефон — DPR 2 в пределах бюджета памяти) и сглаживание; _rs — динамический масштаб, если кадров мало. */
     pickDpr(w, h) {
-      const cap = Math.min(window.devicePixelRatio || 1, this.opts.maxDpr || 2);
-      const budget = PERF.mobile ? (navigator.deviceMemory && navigator.deviceMemory <= 2 ? 0.7e6 : 1.0e6) : PERF.tv ? 1.6e6 : 3.0e6;
-      return Math.max(0.75, Math.min(cap, Math.sqrt(budget / Math.max(1, w * h))));
+      const dev = window.devicePixelRatio || 1, cap = Math.min(dev, PERF.tv ? 2 : (this.opts.maxDpr || 2));
+      const lowMem = navigator.deviceMemory && navigator.deviceMemory <= 2;
+      const budget = this.opts.maxPixels3 || (PERF.mobile ? (lowMem ? 0.75e6 : 1.45e6) : PERF.tv ? 2.2e6 : 4.2e6);
+      return Math.max(0.75, Math.min(cap, Math.sqrt(budget / Math.max(1, w * h))) * (this._rs || 1));
+    }
+    /** Динамическое разрешение: без пересборки мира, только размер буферов */
+    setRenderScale(rs) {
+      rs = Math.max(0.55, Math.min(1, rs)); if (rs === (this._rs || 1) || !this.VW) return;
+      this._rs = rs; this.dpr = this.pickDpr(this.VW, this.VH);
+      if (this.renderer) { this.renderer.setPixelRatio(this.dpr); this.renderer.setSize(this.VW, this.VH, false); this.sizeOverlay(); }
+      else { this.c.width = Math.round(this.VW * this.dpr); this.c.height = Math.round(this.VH * this.dpr); }
+    }
+    /** Мягкий авто-откат: спустя 6 с после старта, если 3 замера подряд (6 с) кадров < 60% от цели — уменьшаем разрешение на 15%;
+     *  если 10 замеров подряд (20 с) кадров > 90% — возвращаем (каждая неудачная попытка удваивает ожидание). */
+    adaptRes() {
+      if (this.opts.adapt === false || /[?&]rs=fix\b/.test(location.search)) return;
+      const now = performance.now(), A = this._ad || (this._ad = { t0: now, f: 0, bad: 0, good: 0, warm: now + 6000, need: 10, upAt: 0 });
+      A.f++; if (now - A.t0 < 2000) return;
+      const fps = A.f * 1000 / (now - A.t0); A.f = 0; A.t0 = now; this.fpsNow = Math.round(fps);
+      if (now < A.warm || this.dimFps || document.hidden || this.paused) { A.bad = A.good = 0; return; }
+      const target = Math.min(60, this.opts.maxFps || PERF.maxFps || 60), rs = this._rs || 1;
+      if (fps < target * 0.6) { A.bad++; A.good = 0; } else if (fps > target * 0.9) { A.good++; A.bad = 0; } else { A.bad = 0; A.good = 0; }
+      if (A.bad >= 3 && rs > 0.56) { if (now - A.upAt < 12000) A.need = Math.min(160, A.need * 2); this.setRenderScale(rs * 0.85); A.bad = 0; A.good = 0; }
+      else if (A.good >= A.need && rs < 1) { this.setRenderScale(rs / 0.85 > 0.97 ? 1 : rs / 0.85); A.upAt = now; A.good = 0; }
+    }
+    /** Сглаживание: компьютер и ТВ — аппаратное MSAA; телефон — FXAA-проход (в 4 раза меньше памяти, чем MSAA). ?aa=0|fxaa|msaa */
+    aaMode() {
+      const m = /[?&]aa=(0|fxaa|msaa)\b/.exec(location.search || ''); if (m) return m[1];
+      return PERF.mobile ? 'fxaa' : 'msaa';
+    }
+    ensurePost() {
+      const THREE = T(), r = this.renderer, v = this._dbs || (this._dbs = new THREE.Vector2()); r.getDrawingBufferSize(v);
+      let P = this.post;
+      if (!P) {
+        const rt = new THREE.WebGLRenderTarget(v.x, v.y, { depthBuffer: true, stencilBuffer: false, type: THREE.UnsignedByteType, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+        // тон-маппинг и перевод в sRGB делаются прямо в материалах (как при выводе на экран), буфер — обычный RGBA8
+        rt.texture.colorSpace = THREE.SRGBColorSpace; rt.texture.internalFormat = 'RGBA8'; rt.isXRRenderTarget = true;
+        const mat = new THREE.ShaderMaterial({
+          uniforms: { tDiffuse: { value: rt.texture }, inv: { value: new THREE.Vector2(1 / v.x, 1 / v.y) } },
+          vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+          fragmentShader: FXAA, depthTest: false, depthWrite: false, toneMapped: false
+        });
+        const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); q.frustumCulled = false;
+        const sc = new THREE.Scene(); sc.add(q);
+        P = this.post = { rt, mat, q, sc, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
+      }
+      if (P.rt.width !== v.x || P.rt.height !== v.y) { P.rt.setSize(v.x, v.y); P.mat.uniforms.inv.value.set(1 / v.x, 1 / v.y); }
+      return P;
+    }
+    freePost() { const P = this.post; if (!P) return; P.rt.dispose(); P.mat.dispose(); P.q.geometry.dispose(); this.post = null; }
+    render3() {
+      const r = this.renderer;
+      if (this._aa === 'fxaa') {
+        const P = this.ensurePost();
+        r.setRenderTarget(P.rt); r.render(this.scene3, this.camera); r.setRenderTarget(null); r.render(P.sc, P.cam);
+      } else r.render(this.scene3, this.camera);
     }
     // ——— WebGL: создаём лениво (базовый конструктор вызывает resize раньше, чем дойдёт до нашего кода) ———
     init3d() {
@@ -27,8 +100,15 @@ window.DP = window.DP || {};
       if (this._failed) return false;
       const THREE = T();
       try {
-        this.renderer = new THREE.WebGLRenderer({ canvas: this.c, antialias: !PERF.mobile && !PERF.tv, alpha: false, stencil: false, powerPreference: PERF.mobile ? 'low-power' : 'default' });
+        this._aa = this.aaMode();
+        this.renderer = new THREE.WebGLRenderer({ canvas: this.c, antialias: this._aa === 'msaa', depth: this._aa !== 'fxaa', alpha: false, stencil: false, powerPreference: PERF.mobile ? 'low-power' : 'default' });
       } catch (err) { this._failed = true; return false; }
+      // цвет: мягкий тон-маппинг (Khronos Neutral) — цвета детского рисунка почти не меняются, а блики не «выгорают»
+      const tm = /[?&]tm=(0|aces|agx)\b/.exec(location.search || '');
+      this.renderer.toneMapping = tm ? ({ 0: THREE.NoToneMapping, aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping })[tm[1]] : THREE.NeutralToneMapping;
+      this.renderer.toneMappingExposure = 1.06;
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      DP.G3.aniso = Math.min(8, this.renderer.capabilities.getMaxAnisotropy() || 1);
       this.scene3 = new THREE.Scene(); this.camera = new THREE.PerspectiveCamera(50, 1, 0.5, 1000);
       this.dyn = new THREE.Group(); this.scene3.add(this.dyn);
       this.models = new Map(); this.critM = new Map(); this.nestM = new Map(); this.propM = []; this.foodSet = new Set(); this.ballSet = new Set(); this.campM = null;
@@ -163,7 +243,7 @@ window.DP = window.DP || {};
       if (this.campM) { this.disposeObj(this.campM.root); this.campM = null; }
       if (this.world) { this.world.dispose(); this.world = null; }
       this.shadow.dispose(); this.shadow.mesh.removeFromParent();
-      DP.Things3D.purge(); DP.Dino3D.purge(); DP.G3.freeTextures();
+      DP.Things3D.purge(); DP.Dino3D.purge(); DP.G3.freeTextures(); this.freePost();
       this.mkShadows();
       this.renderer.renderLists.dispose();
     }
@@ -178,7 +258,7 @@ window.DP = window.DP || {};
       if (this._mo) this._mo.disconnect();
       if (this.ov) this.ov.remove();
       if (this.c) { this.c.removeEventListener('webglcontextlost', this._onLost); this.c.removeEventListener('webglcontextrestored', this._onRestored); }
-      if (this.renderer) { this.renderer.dispose(); this.renderer = null; }
+      this.freePost(); if (this.renderer) { this.renderer.dispose(); this.renderer = null; }
     }
     // ——— кадр ———
     draw() {
@@ -193,9 +273,10 @@ window.DP = window.DP || {};
       this.shadow.end();
       const tp = this._target; this._tgt = this._tgt || new (T().Vector3)(); this._tgt.set(tp.X, tp.Y, tp.Z);
       this.world.update(this.t, dt, { position: this.camera.position, target: this._tgt });
-      this.renderer.render(this.scene3, this.camera);
+      this.render3();
       this.measure3();
       this.drawOverlay3();
+      this.adaptRes();
     }
     modelKey(e) { const d = e.d || {}; return e.species + '|' + (d.palette || 0) + '|' + (d.sprite ? d.sprite.length + d.sprite.slice(-24) : '') + '|' + (d.legend ? 'L' : ''); }
     drawEnts3(dt) {
@@ -453,14 +534,15 @@ window.DP = window.DP || {};
         ms.forEach(m => ['map', 'normalMap', 'emissiveMap'].forEach(k => { const tx = m[k]; if (tx && !texs.has(tx)) { texs.add(tx); const im = tx.image; const w = (im && (im.width || im.naturalWidth)) || (tx.userData.w || 0), h = (im && (im.height || im.naturalHeight)) || (tx.userData.h || 0); texBytes += (w || 512) * (h || 512) * 4 * (tx.generateMipmaps !== false ? 1.33 : 1); } }));
       });
       const d3 = DP.Dino3D.stats(); texBytes = Math.max(texBytes, 0) + 0; // атласы динозавров уже учтены через материалы
-      const aa = !PERF.mobile && !PERF.tv ? 4 : 1, buf = this.c.width * this.c.height * (4 * 2 + 4 + (aa > 1 ? 4 * aa + 4 * aa : 0));
+      // буферы: экран (2 цветовых для композитора + глубина) | MSAA ×4 (цвет+глубина) | FXAA: экран без глубины + промежуточный цвет+глубина
+      const aa = this._aa, px = this.c.width * this.c.height, buf = px * (aa === 'fxaa' ? 4 * 2 + 8 : aa === 'msaa' ? 4 * 2 + 4 + 32 : 4 * 2 + 4);
       const ovB = this.ov ? this.ov.width * this.ov.height * 4 : 0;
       const total = geoBytes + texBytes + buf + ovB;
-      return { textures: info.memory.textures, geometries: info.memory.geometries, calls: info.render.calls, triangles: info.render.triangles, texMB: +(texBytes / 1048576).toFixed(2), geoMB: +(geoBytes / 1048576).toFixed(2), bufferMB: +(buf / 1048576).toFixed(2), overlayMB: +(ovB / 1048576).toFixed(2), totalMB: +(total / 1048576).toFixed(2), dino: d3, dpr: this.dpr, size: [this.c.width, this.c.height] };
+      return { textures: info.memory.textures, geometries: info.memory.geometries, calls: info.render.calls, triangles: info.render.triangles, texMB: +(texBytes / 1048576).toFixed(2), geoMB: +(geoBytes / 1048576).toFixed(2), bufferMB: +(buf / 1048576).toFixed(2), overlayMB: +(ovB / 1048576).toFixed(2), totalMB: +(total / 1048576).toFixed(2), dino: d3, dpr: this.dpr, size: [this.c.width, this.c.height], aa: this._aa, rs: this._rs || 1, toneMapping: this.renderer.toneMapping, fps: this.fpsNow || 0 };
     }
     samplePixels(n) {
       if (!this.renderer || !this.world) return null;
-      this.updateCamera3(); this.renderer.render(this.scene3, this.camera);
+      this.updateCamera3(); this.render3();
       const gl = this.renderer.getContext(), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(4), seen = new Set(); let nonBlack = 0; n = n || 8;
       for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { gl.readPixels(Math.floor((i + 0.5) / n * w), Math.floor((j + 0.5) / n * h), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); if (px[0] + px[1] + px[2] > 24) nonBlack++; seen.add((px[0] >> 4) + ',' + (px[1] >> 4) + ',' + (px[2] >> 4)); }
       return { samples: n * n, nonBlack, distinct: seen.size, w, h };
@@ -473,7 +555,7 @@ window.DP = window.DP || {};
     try {
       if (!window.THREE) return false;
       if (/[?&]r=2d\b/.test(location.search)) return false;
-      try { if (localStorage.getItem('dp.render') === '2d') return false; } catch (e) { /* ignore */ }
+      if (PERF.render2d) return false;
       const c = document.createElement('canvas'), gl = c.getContext('webgl2') || c.getContext('webgl');
       if (!gl) return false;
       const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext();
