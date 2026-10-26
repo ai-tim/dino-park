@@ -138,7 +138,7 @@ window.DP = window.DP || {};
       vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition), R1 = cross(sy, normal), R2 = cross(normal, sx);
       float det = dot(sx, R1) * faceDirection; vec3 gr = sign(det) * (dH.x * R1 + dH.y * R2);
       normal = normalize(abs(det) * normal - gr); }`;
-  const detailOn = () => { const v = new URLSearchParams(location.search).get('detail'); return v !== '0'; };
+  const detailOn = () => { const v = /[?&]detail=([01])\b/.exec(location.search || ''); if (v) return v[1] === '1'; const P = DP.Scene && DP.Scene.PERF; return !(P && P.detail === false); }; // ТВ «Авто»/«Плавно»: простые шейдеры
   function detail(m, kind, amp, bs) {
     const useD = kind && detailOn(), k = (bs == null ? 1 : bs);
     m.onBeforeCompile = (sh) => {
@@ -178,6 +178,7 @@ window.DP = window.DP || {};
   // ——— растения и камни (единичный размер; масштаб задаёт экземпляр) ———
   const QL = () => (DP.Scene && DP.Scene.PERF && DP.Scene.PERF.quality) || 'high';
   const HI = () => QL() === 'high', LO = () => QL() === 'low';
+  const VEG = (n) => { const P = DP.Scene && DP.Scene.PERF, k = P && P.veg; return k ? Math.max(1, Math.round(n * k)) : n; }; // ТВ: трава/цветы/кусты реже
   /** Изогнутая травинка из нескольких звеньев (сужается к кончику) */
   function blade2(h, w, lean, segs) {
     const THREE = T(), pos = [], n = segs || 3;
@@ -497,20 +498,20 @@ window.DP = window.DP || {};
         inst(geo, vegTree, list, 'trees-' + kind);
       });
       // кусты и камни для красоты (не прячутся) — по краям полосы и вдали
-      const bushes = scatter(N(32, 46, 60), [zBand1 + 2, zBand0 * 1.4], (Z) => halfW(Z) * 0.8, (X, Z) => (Z < zBand0 || Math.abs(X) > M.Wu * 0.42) && ok(X, Z, 1.5) ? { X, Z, Y: hAt(X, Z), s: 0.9 + r() * 1.3, ry: r() * TAU, tint: 0.85 + r() * 0.3 } : null);
+      const bushes = scatter(VEG(N(32, 46, 60)), [zBand1 + 2, zBand0 * 1.4], (Z) => halfW(Z) * 0.8, (X, Z) => (Z < zBand0 || Math.abs(X) > M.Wu * 0.42) && ok(X, Z, 1.5) ? { X, Z, Y: hAt(X, Z), s: 0.9 + r() * 1.3, ry: r() * TAU, tint: 0.85 + r() * 0.3 } : null);
       inst(KIT.bush(S.L, rng(9), bgId === 'glacier' ? 'snowbush' : bgId === 'canyon' ? 'dry' : bgId === 'jungle' ? 'berry' : 'bush'), vegTree, bushes, 'bushes');
       const rocks = scatter(N(14, 22, 30), [zBand1, zBand0 * 1.6], (Z) => halfW(Z) * 0.8, (X, Z) => ok(X, Z, 1) ? { X, Z, Y: hAt(X, Z) - 0.15, s: 0.4 + r() * 1.1, ry: r() * TAU, tint: 0.9 + r() * 0.2 } : null);
       inst(KIT.rock(S.rock, rng(10), bgId === 'glacier', S.moss), solid, rocks, 'rocks');
       if (!mobile) { const slabs = scatter(N(0, 8, 14), [zBand1, zBand0 * 1.4], (Z) => halfW(Z) * 0.8, (X, Z) => ok(X, Z, 1.2) && (Z < zBand0 || Math.abs(X) > M.Wu * 0.38) ? { X, Z, Y: hAt(X, Z) - 0.05, s: 0.5 + r() * 0.8, ry: r() * TAU, tint: 0.9 + r() * 0.2 } : null); inst(KIT.slab(S.rock, rng(19)), solid, slabs, 'slabs'); }
       // трава: в полосе и перед ней (шевелится от ветра)
-      const grass = scatter(N(720, 1000, 1400), [zBand1 + 8, zBand0 * 1.25], (Z) => halfW(Z) * 0.75, (X, Z) => ok(X, Z, 0.4) ? { X, Z, Y: hAt(X, Z), s: 0.7 + r() * 0.9, ry: r() * TAU, tint: 0.8 + r() * 0.4 } : null);
+      const grass = scatter(VEG(N(720, 1000, 1400)), [zBand1 + 8, zBand0 * 1.25], (Z) => halfW(Z) * 0.75, (X, Z) => ok(X, Z, 0.4) ? { X, Z, Y: hAt(X, Z), s: 0.7 + r() * 0.9, ry: r() * TAU, tint: 0.8 + r() * 0.4 } : null);
       inst(KIT.grass(S.grass, rng(11)), vegSoft, grass, 'grass');
-      const flowers = scatter(N(48, 80, 110), [zBand1, zBand0], (Z) => halfW(Z) * 0.6, (X, Z) => ok(X, Z, 0.6) ? { X, Z, s: 0.8 + r() * 0.6, ry: r() * TAU } : null);
+      const flowers = scatter(VEG(N(48, 80, 110)), [zBand1, zBand0], (Z) => halfW(Z) * 0.6, (X, Z) => ok(X, Z, 0.6) ? { X, Z, s: 0.8 + r() * 0.6, ry: r() * TAU } : null);
       inst(KIT.flowers(S.L, rng(12), S.flowers), vegSoft, flowers, 'flowers');
       // большие листья на переднем плане (как рамка кадра)
       const front = []; for (let X = -M.Wu / 2 - 8; X < M.Wu / 2 + 8; X += 6 + r() * 5) { const Z = M.Z(H * (1.03 + r() * 0.05)); front.push({ X, Z, s: 2.2 + r() * 1.4, ry: r() * TAU }); }
       inst(bgId === 'canyon' || bgId === 'glacier' ? KIT.grass(S.grass, rng(13)) : KIT.fern(S.L, rng(13)), vegSoft, front, 'front');
-      const ferns = scatter(N(14, 26, 36), [zBand1, zBand0 * 1.2], (Z) => halfW(Z) * 0.8, (X, Z) => (Z < zBand0 || Math.abs(X) > M.Wu * 0.4) && ok(X, Z, 1) && bgId !== 'canyon' && bgId !== 'glacier' ? { X, Z, s: 1 + r() * 0.8, ry: r() * TAU } : null);
+      const ferns = scatter(VEG(N(14, 26, 36)), [zBand1, zBand0 * 1.2], (Z) => halfW(Z) * 0.8, (X, Z) => (Z < zBand0 || Math.abs(X) > M.Wu * 0.4) && ok(X, Z, 1) && bgId !== 'canyon' && bgId !== 'glacier' ? { X, Z, s: 1 + r() * 0.8, ry: r() * TAU } : null);
       inst(KIT.fern(S.L, rng(14)), vegSoft, ferns, 'ferns');
       if (S.cactus) { const cs = scatter(mobile ? 10 : 16, [zBand1, zBand0 * 1.6], (Z) => halfW(Z) * 0.8, (X, Z) => (Z < zBand0 || Math.abs(X) > M.Wu * 0.42) && ok(X, Z, 1) ? { X, Z, s: 1 + r() * 1.4, ry: r() * TAU } : null); inst(KIT.cactus(rng(15)), solid, cs, 'cactus'); }
       if (S.mush) { // светящиеся грибы

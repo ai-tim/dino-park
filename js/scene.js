@@ -1060,6 +1060,43 @@ window.DP = window.DP || {};
       if (!this.paused) { this.updateCam(dt); for (let left = dt; left > 1e-4; left -= 0.05) this.update(Math.min(0.05, left)); this.draw(); }
     }
   }
+  /** v6 — ступени качества телевизора. Причина «виснет на LG» (v5): мягкие тени PCF, MSAA в родном 1080p, процедурные шейдеры
+   *  деталей и густая трава — слабой видеокарте ТВ это не по силам. Теперь на ТВ: без теней в реальном времени (только пятна-тени
+   *  под динозаврами), без MSAA, рендер в уменьшенном буфере (растягивается экраном), трава/цветы реже. Ступени:
+   *  (и динозавры v5 по 25–75 тыс. треугольников — на ТВ сетка крупнее, в 2–3 раза легче).
+   *  0 «Красиво»: средняя детализация + детали поверхностей + FXAA, буфер 80%;
+   *  1 (старт «Авто»): средняя детализация, простые шейдеры, без сглаживания, буфер 80%;
+   *  2 «Плавно»: низкая детализация, буфер 67%, трава вдвое реже; 3 — буфер 55%, ещё реже; 4 — 2D-картинка. */
+  Scene.TVQ = [
+    { q: 'mid', detail: true, aa: 'fxaa', rs: 0.8, veg: 0.8, dstep: 2.6 },
+    { q: 'mid', detail: false, aa: '0', rs: 0.8, veg: 0.6, dstep: 3.2 },
+    { q: 'low', detail: false, aa: '0', rs: 0.67, veg: 0.5, dstep: 3.6 },
+    { q: 'low', detail: false, aa: '0', rs: 0.55, veg: 0.35, dstep: 4.2 },
+    { q: 'low', detail: false, aa: '0', rs: 0.55, veg: 0.35, dstep: 4.2, r2d: true }
+  ];
+  Scene.TVQ_KEY = 'dp.tvq'; Scene.TVQ_TTL = 36 * 3600e3; // «Авто» помнит найденную ступень 36 ч, потом снова пробует лучше
+  Scene.tvqLoad = function () {
+    try { const v = JSON.parse(localStorage.getItem(Scene.TVQ_KEY) || 'null'); if (!v || v.v !== 6) return { mode: 'auto', lvl: null };
+      const mode = /^(auto|smooth|pretty)$/.test(v.mode) ? v.mode : 'auto', fresh = Date.now() - (v.t || 0) < Scene.TVQ_TTL;
+      return { mode, lvl: mode === 'auto' && fresh && v.lvl >= 0 && v.lvl <= 4 ? v.lvl | 0 : null, no2d: !!(fresh && v.no2d) };
+    } catch (e) { return { mode: 'auto', lvl: null }; }
+  };
+  Scene.tvqSave = function (mode, lvl, no2d) { try { localStorage.setItem(Scene.TVQ_KEY, JSON.stringify({ v: 6, mode, lvl: lvl == null ? null : lvl, no2d: !!no2d, t: Date.now() })); } catch (e) { /* ignore */ } };
+  /** какая ступень: из адреса (?tvq) или сохранённая; «Авто» без сохранённой — ступень 1 */
+  Scene.tvqPick = function (param) {
+    if (param != null && /^[0-4]$/.test(param)) return { mode: 'fixed', lvl: +param };
+    const st = param ? { mode: param, lvl: null } : Scene.tvqLoad();
+    if (st.mode === 'pretty') return { mode: 'pretty', lvl: 0 };
+    if (st.mode === 'smooth') return { mode: 'smooth', lvl: 2 };
+    return { mode: 'auto', lvl: st.lvl == null ? 1 : st.lvl };
+  };
+  Scene.applyTvLevel = function (P, pick, keepQ) {
+    const L = Scene.TVQ[pick.lvl] || Scene.TVQ[1];
+    P.tvMode = pick.mode; P.tvLevel = pick.lvl; P.tvL = L;
+    if (!keepQ) P.quality = L.q;
+    P.render2d = !!L.r2d; if (L.r2d) P.maxPixels = Math.min(P.maxPixels, 1.2e6); P.detail = L.detail; P.aa = L.aa; P.rs = L.rs; P.veg = L.veg; P.shadows = false; P.maxFps = 30;
+    return P;
+  };
   // Профиль производительности: телефоны/планшеты (сенсорный экран, маленький экран) и «экономия энергии»
   Scene.PERF = (function () {
     const mm = (q) => { try { return !!(window.matchMedia && matchMedia(q).matches); } catch (e) { return false; } };
@@ -1081,7 +1118,12 @@ window.DP = window.DP || {};
       saved = fb && /^(low|mid)$/.test(fb.q || '') ? fb.q : null;
     } catch (e) { /* ignore */ }
     const quality = qp ? qp[1] : saved ? saved : mobile || lowMem ? 'low' : tv || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) ? 'mid' : 'high';
-    return { mobile, tv, quality, reduce, lowMem: !!lowMem, render2d: !!(fb && fb.r === '2d'), maxDpr: 2, maxPixels: mobile ? (lowMem ? 0.9e6 : 1.4e6) : tv ? 2.2e6 : 4.5e6, maxFps: reduce || lowMem || tv ? 30 : 0 };
+    const P = { mobile, tv, quality, reduce, lowMem: !!lowMem, render2d: !!(fb && fb.r === '2d'), maxDpr: 2, maxPixels: mobile ? (lowMem ? 0.9e6 : 1.4e6) : tv ? 2.2e6 : 4.5e6, maxFps: reduce || lowMem || tv ? 30 : 0 };
+    // v6: телевизор — свои ступени качества (Scene.TVQ). ?tvq=auto|smooth|pretty|0…4 — вручную (и на компьютере для проверок)
+    const tq = /[?&]tvq=(auto|smooth|pretty|[0-4])\b/.exec(location.search || '');
+    const tvPage = /tv\.html$/.test(location.pathname || '') && Scene.tvqLoad().mode !== 'auto'; // ПК с tv.html, качество выбрано вручную
+    if (tv || tq || tvPage) Scene.applyTvLevel(P, Scene.tvqPick(tq && tq[1]), !!qp);
+    return P;
   })();
   Scene.all = [];
   // шапки (эмодзи) и где они сидят на голове у каждого вида: [доля ширины, доля высоты, размер]

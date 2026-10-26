@@ -36,33 +36,95 @@
   function show(p) {
     park = p;
     $('#join').classList.add('hidden'); $('#park').classList.remove('hidden'); $('#bar').classList.remove('hidden'); $('#tvname').classList.remove('hidden');
-    if (!scene) { makeScene(); watchFps(); }
+    if (!scene) { makeScene(); watchFps(); qLabel(); }
     scene.resize(); render(p); scene.opts.entrance = true;
     sessionStorage.setItem('dp_tv', JSON.stringify({ id: p.id, token: Y.tvToken || null, relay: !!Y.tvRelay }));
     wake(); linkState();
   }
-  // слабая видеокарта телевизора. v5: сначала сцена сама снижает разрешение (Scene3D.adaptRes, обратимо). Если и это не помогло —
-  // после 10 с разогрева и 5 замеров подряд (10 с) меньше 12 кадров/с (или 3 замера меньше 4 кадров/с): шаг 1 — детализация ниже, шаг 2 — 2D.
-  // Решение хранится 36 ч (dp.perf), потом телевизор снова пробует полное качество.
+  // ——— v6: качество картинки на ТВ. «Авто» за первые 3–5 с меряет кадры и, если их меньше 24 в секунду, сразу снижает ступень
+  // (тени уже выключены → простые шейдеры → меньше буфер и реже трава → 2D). Найденная ступень хранится 36 ч (dp.tvq).
+  // Вручную: кнопка «⚙️ Качество» на экране ТВ (пульт: стрелки + OK) или в телефоне: ☰ → 📺 ТВ. ———
+  const SC = DP.Scene, P = SC.PERF, MODES = { auto: 'Авто', smooth: 'Плавно', pretty: 'Красиво' };
+  const tvLadder = () => !!P.tvL;
+  window.dpTvQ = { get level() { return P.tvLevel; }, get mode() { return P.tvMode || 'auto'; }, set: (m) => setMode(m), log: [] };
+  function qLabel() { const b = $('#tvq'); if (b) b.textContent = '⚙️ Качество: ' + (MODES[P.tvMode] || 'Авто'); }
+  function rebuildScene() {
+    if (scene) scene.destroy(); const c = $('#park'), nc = c.cloneNode(false); c.parentNode.replaceChild(nc, c);
+    shownView = null; makeScene(); scene.resize(); if (park) render(park);
+  }
+  function setLevel(lvl) {
+    const was2d = !scene || !scene.is3d;
+    SC.applyTvLevel(P, { mode: P.tvMode || 'auto', lvl }, !!U.param('q'));
+    window.dpTvQ.log.push({ lvl, t: Math.round(performance.now()) });
+    if (P.render2d || was2d || !scene.retune) rebuildScene();
+    else { scene.retune(); shownView = null; if (park) render(park); }
+  }
+  function setMode(mode) {
+    if (!MODES[mode]) return;
+    if (!tvLadder()) SC.applyTvLevel(P, SC.tvqPick('auto')); // компьютер с открытым tv.html: включаем ступени ТВ по запросу
+    const lvl = mode === 'pretty' ? 0 : mode === 'smooth' ? 2 : 1;
+    P.tvMode = mode; SC.tvqSave(mode, mode === 'auto' ? null : lvl);
+    if (lvl !== P.tvLevel || (mode !== 'auto' && P.render2d)) setLevel(lvl);
+    qLabel(); announce('⚙️ Качество: ' + MODES[mode] + (mode === 'auto' ? ' — подберём под телевизор' : ''));
+    watchFps();
+  }
+  let watchIv = null;
   function watchFps() {
+    clearInterval(watchIv); watchIv = null;
+    if (!scene || U.param('r') || U.param('q')) return;
+    if (!tvLadder()) return watchFpsOld();
+    if (P.tvMode !== 'auto') return;
+    // замер: ждём 3 кадра (компиляция шейдеров), затем окно 3 с; потом — окна по 10 с (долгая проверка)
+    let f0 = -1, t0 = 0, probe = true, slow = 0, prev = null, wait = 0, no2d = SC.tvqLoad().no2d; // prev: {lvl, fps} — с какой ступени и с каким результатом ушли
+    watchIv = setInterval(() => {
+      if (!scene) return;
+      const f = scene.frames || 0, now = performance.now();
+      if (document.hidden) { f0 = -1; return; }
+      if (f0 < 0) { f0 = f; t0 = now; wait = f + 3; return; }
+      if (wait) { if (f < wait) { f0 = f; t0 = now; return; } wait = 0; f0 = f; t0 = now; return; } // первые кадры после смены — компиляция шейдеров, не считаем
+      const el = now - t0; if (el < (probe ? 3000 : 10000)) return;
+      const fps = (f - f0) * 1000 / el; f0 = f; t0 = now;
+      const lvl = P.tvLevel, last = SC.TVQ.length - (no2d ? 2 : 1);
+      let next = lvl;
+      // 2D-картинка нагружает процессор, а не видеокарту: если на этом ТВ она вышла не быстрее лёгкого 3D — возвращаемся и остаёмся
+      if (probe && P.render2d && prev && fps <= prev.fps * 1.15) {
+        probe = false; f0 = -1; no2d = true; SC.tvqSave('auto', prev.lvl, true); const back = prev.lvl; prev = null; setLevel(back);
+        announce('🖼️ Оставили лёгкую 3D-графику'); return;
+      }
+      if (probe) {
+        if (fps < 24 && lvl < last) next = Math.min(last, lvl + (fps < 12 ? 2 : 1));
+        if (SC.TVQ[next].r2d && fps >= 15) next = Math.max(lvl, next - 1); // 2D — только если и самая лёгкая 3D-ступень совсем не тянет
+        if (next === lvl) probe = false;
+      } else {
+        slow = fps < 18 ? slow + 1 : 0;
+        if (slow >= 2 && lvl < last && (lvl < last - 1 || fps < 12)) next = lvl + 1;
+      }
+      if (next !== lvl) {
+        slow = 0; probe = true; f0 = -1; prev = { lvl, fps };
+        SC.tvqSave('auto', next, no2d); setLevel(next);
+        announce(SC.TVQ[next].r2d ? '🖼️ Включена лёгкая графика для этого телевизора' : '🖼️ Графика упрощена для плавности');
+      }
+    }, 500);
+  }
+  // компьютер/планшет с tv.html (без ступеней ТВ): прежний мягкий откат v5
+  function watchFpsOld() {
     if (!scene.is3d) return;
     let f0 = scene.frames || 0, t0 = Date.now(), bad = 0, worst = 0;
     const warm = Date.now() + 10000;
-    const iv = setInterval(() => {
-      if (!scene || !scene.is3d) return clearInterval(iv);
+    watchIv = setInterval(() => {
+      if (!scene || !scene.is3d) { clearInterval(watchIv); return; }
       const fps = ((scene.frames || 0) - f0) * 1000 / (Date.now() - t0); f0 = scene.frames || 0; t0 = Date.now();
       if (document.hidden || Date.now() < warm) { bad = 0; worst = 0; return; }
       bad = fps < 12 && (scene._rs || 1) <= 0.6 ? bad + 1 : 0;
-      worst = fps < 4 ? worst + 1 : 0; // 1–3 кадра/с: снижением разрешения уже не спасти — сразу ступенька вниз
-      if ((bad >= 5 || worst >= 3) && !U.param('r') && !U.param('q')) {
-        clearInterval(iv);
-        const P = DP.Scene.PERF, next = P.quality === 'high' ? 'mid' : P.quality === 'mid' ? 'low' : null;
+      worst = fps < 4 ? worst + 1 : 0;
+      if (bad >= 5 || worst >= 3) {
+        clearInterval(watchIv);
+        const next = P.quality === 'high' ? 'mid' : P.quality === 'mid' ? 'low' : null;
         try { localStorage.setItem('dp.perf', JSON.stringify(next ? { v: 5, q: next, t: Date.now() } : { v: 5, q: 'low', r: '2d', t: Date.now() })); } catch (e) { /* ignore */ }
         if (next) P.quality = next; else P.render2d = true;
-        scene.destroy(); const c = $('#park'), nc = c.cloneNode(false); c.parentNode.replaceChild(nc, c);
-        shownView = null; makeScene(); scene.resize(); render(park);
+        rebuildScene();
         announce(next ? '🖼️ Графика упрощена для плавности' : '🖼️ Включена лёгкая графика для этого телевизора');
-        if (next) watchFps();
+        if (next) watchFpsOld();
       }
     }, 2000);
   }
@@ -86,6 +148,7 @@
     if (ev.type === 'playall') announce('🎾 Играем со всеми!');
     if (ev.type === 'closeup' && scene.closeUp) scene.closeUp(ev.uid);
     if (ev.type === 'zoomout' && scene.resetZoom) scene.resetZoom();
+    if (ev.type === 'tvq' && ev.mode) setMode(ev.mode); // качество выбрали на телефоне
     if (ev.type === 'travel' && ev.name) announce(`🧭 ${ev.name} отправился в «${locName(ev.to)}»`);
   });
   Y.on('deleted', () => { sessionStorage.removeItem('dp_tv'); location.href = 'tv.html'; });
@@ -109,6 +172,18 @@
   $('#code').onkeydown = (e) => { if (e.key === 'Enter' || e.keyCode === 13) join($('#code').value.trim()); };
   $('#code').oninput = () => { const v = $('#code').value.replace(/[\uFF10-\uFF19]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFF10 + 48)).replace(/\D/g, '').slice(0, 5); if (v !== $('#code').value) $('#code').value = v; };
   $('#fs').onclick = () => U.toggleFullscreen();
+  const order = ['auto', 'smooth', 'pretty'];
+  $('#tvq').onclick = () => { const i = order.indexOf(P.tvMode || 'auto'); setMode(order[(i + 1) % order.length]); };
+  // пульт: любая стрелка, когда ничего не выбрано, — фокус на кнопки (дальше стрелки ←/→ и OK)
+  window.addEventListener('keydown', (e) => {
+    if (!park) return; const k = e.key || '', a = document.activeElement, bar = $('#bar');
+    if (/^Arrow/.test(k) || [37, 38, 39, 40].indexOf(e.keyCode) >= 0) {
+      const bs = Array.prototype.slice.call(bar.querySelectorAll('button')), i = bs.indexOf(a);
+      if (i < 0) { $('#tvq').focus(); e.preventDefault(); }
+      else if (k === 'ArrowLeft' || e.keyCode === 37) { bs[(i + bs.length - 1) % bs.length].focus(); e.preventDefault(); }
+      else if (k === 'ArrowRight' || e.keyCode === 39) { bs[(i + 1) % bs.length].focus(); e.preventDefault(); }
+    }
+  });
   $('#exit').onclick = () => { sessionStorage.removeItem('dp_tv'); if (Y.viewer) Y.viewer.forget(); location.href = 'tv.html'; };
 
   // скрываем кнопки, когда никто не трогает экран

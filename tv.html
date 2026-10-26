@@ -31,6 +31,10 @@
     .tv-name.fade { opacity: 0; }
     .tv-link { position: fixed; right: 68px; bottom: 14px; z-index: 6; padding: 8px 14px; font-weight: 800; font-size: 16px; }
     .tv-link.hidden { display: none; }
+    /* v6: на телевизоре без размытия фона и больших теней у панелей — это «переписывает» весь кадр каждый раз и тормозит слабые ТВ */
+    .tv-page .glass, .tv-page .btn, .tv-page .music-btn, .tv-page .toast { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; box-shadow: none !important; }
+    .tv-page .glass { background: rgba(5, 24, 28, 0.86); }
+    .tv-bar .btn:focus { outline: 4px solid #ffd43b; outline-offset: 2px; }
   </style>
 </head>
 <body class="tv-page">
@@ -47,7 +51,7 @@
       <p class="note" id="mode"></p>
     </div>
   </div>
-  <div class="tv-bar hidden" id="bar"><button class="btn" id="fs">⛶ Во весь экран</button><button class="btn" id="exit">✕ Отключить</button></div>
+  <div class="tv-bar hidden" id="bar"><button class="btn" id="tvq">⚙️ Качество: Авто</button><button class="btn" id="fs">⛶ Во весь экран</button><button class="btn" id="exit">✕ Отключить</button></div>
   <div class="tv-name glass hidden" id="tvname"></div>
   <div class="tv-link glass hidden" id="tvlink"></div>
   <div class="tv-toast glass" id="tvtoast"></div>

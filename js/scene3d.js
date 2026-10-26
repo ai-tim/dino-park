@@ -7,7 +7,7 @@ window.DP = window.DP || {};
 (function () {
   const TAU = Math.PI * 2, U = () => DP.util, T = () => window.THREE;
   if (!DP.Scene) return;
-  const Base = DP.Scene, PERF = Base.PERF, D2R = Math.PI / 180;
+  const Base = DP.Scene, PERF = Base.PERF, D2R = Math.PI / 180, ORDER = { water: 0, ground: 1, sky: 2 };
   // FXAA (Т. Лоттес, компактный вариант): сглаживает «лесенки» по контрасту яркости, 9 выборок — по силам телефону
   const FXAA = `precision highp float; uniform sampler2D tDiffuse; uniform vec2 inv; varying vec2 vUv;
     void main() {
@@ -32,6 +32,8 @@ window.DP = window.DP || {};
       this.is3d = true;
       if (!this.opts.maxFps && PERF.mobile) this.opts.maxFps = 30; // телефоны: 30 кадров в секунду — плавно и бережёт батарею
     }
+    /** v6: верхний предел масштаба буфера (ТВ: 0,8 / 0,67 / 0,55 — экран сам растягивает картинку) */
+    rsMax() { return PERF.rs || 1; }
     makeCtx() { this._aux = document.createElement('canvas'); this._aux.width = this._aux.height = 4; return this._aux.getContext('2d'); }
     /** v5: чёткость. Раньше: телевизор — не больше 1 пикселя на CSS-пиксель и бюджет 1,6 Мп (на 1920×1080 рисовали ~1690×950
      *  и растягивали — отсюда «мыло»), телефон — ~1,0 Мп без сглаживания. Теперь: родное разрешение экрана (ТВ 1920×1080,
@@ -40,11 +42,11 @@ window.DP = window.DP || {};
       const dev = window.devicePixelRatio || 1, cap = Math.min(dev, PERF.tv ? 2 : (this.opts.maxDpr || 2));
       const lowMem = navigator.deviceMemory && navigator.deviceMemory <= 2;
       const budget = this.opts.maxPixels3 || (PERF.mobile ? (lowMem ? 0.75e6 : 1.45e6) : PERF.tv ? 2.2e6 : 4.2e6);
-      return Math.max(0.75, Math.min(cap, Math.sqrt(budget / Math.max(1, w * h))) * (this._rs || 1));
+      return Math.max(PERF.tvL ? 0.45 : 0.75, Math.min(cap, Math.sqrt(budget / Math.max(1, w * h))) * (this._rs || this.rsMax()));
     }
     /** Динамическое разрешение: без пересборки мира, только размер буферов */
     setRenderScale(rs) {
-      rs = Math.max(0.55, Math.min(1, rs)); if (rs === (this._rs || 1) || !this.VW) return;
+      rs = Math.max(PERF.tvL ? 0.45 : 0.55, Math.min(this.rsMax(), rs)); if (rs === (this._rs || this.rsMax()) || !this.VW) return;
       this._rs = rs; this.dpr = this.pickDpr(this.VW, this.VH);
       if (this.renderer) { this.renderer.setPixelRatio(this.dpr); this.renderer.setSize(this.VW, this.VH, false); this.sizeOverlay(); }
       else { this.c.width = Math.round(this.VW * this.dpr); this.c.height = Math.round(this.VH * this.dpr); }
@@ -57,14 +59,15 @@ window.DP = window.DP || {};
       A.f++; if (now - A.t0 < 2000) return;
       const fps = A.f * 1000 / (now - A.t0); A.f = 0; A.t0 = now; this.fpsNow = Math.round(fps);
       if (now < A.warm || this.dimFps || document.hidden || this.paused) { A.bad = A.good = 0; return; }
-      const target = Math.min(60, this.opts.maxFps || PERF.maxFps || 60), rs = this._rs || 1;
+      const target = Math.min(60, this.opts.maxFps || PERF.maxFps || 60), mx = this.rsMax(), rs = this._rs || mx, lo = PERF.tvL ? 0.46 : 0.56;
       if (fps < target * 0.6) { A.bad++; A.good = 0; } else if (fps > target * 0.9) { A.good++; A.bad = 0; } else { A.bad = 0; A.good = 0; }
-      if (A.bad >= 3 && rs > 0.56) { if (now - A.upAt < 12000) A.need = Math.min(160, A.need * 2); this.setRenderScale(rs * 0.85); A.bad = 0; A.good = 0; }
-      else if (A.good >= A.need && rs < 1) { this.setRenderScale(rs / 0.85 > 0.97 ? 1 : rs / 0.85); A.upAt = now; A.good = 0; }
+      if (A.bad >= 3 && rs > lo) { if (now - A.upAt < 12000) A.need = Math.min(160, A.need * 2); this.setRenderScale(rs * 0.85); A.bad = 0; A.good = 0; }
+      else if (A.good >= A.need && rs < mx) { this.setRenderScale(rs / 0.85 > mx * 0.97 ? mx : rs / 0.85); A.upAt = now; A.good = 0; }
     }
     /** Сглаживание: компьютер и ТВ — аппаратное MSAA; телефон — FXAA-проход (в 4 раза меньше памяти, чем MSAA). ?aa=0|fxaa|msaa */
     aaMode() {
       const m = /[?&]aa=(0|fxaa|msaa)\b/.exec(location.search || ''); if (m) return m[1];
+      if (PERF.aa) return PERF.aa; // ТВ: без MSAA (ступень «Красиво» — FXAA в уменьшенном буфере)
       return PERF.mobile ? 'fxaa' : 'msaa';
     }
     ensurePost() {
@@ -101,7 +104,7 @@ window.DP = window.DP || {};
       const THREE = T();
       try {
         this._aa = this.aaMode();
-        this.renderer = new THREE.WebGLRenderer({ canvas: this.c, antialias: this._aa === 'msaa', depth: this._aa !== 'fxaa', alpha: false, stencil: false, powerPreference: PERF.mobile ? 'low-power' : 'default' });
+        this.renderer = new THREE.WebGLRenderer({ canvas: this.c, antialias: this._aa === 'msaa', depth: this._aa !== 'fxaa' || !!PERF.tvL, alpha: false, stencil: false, powerPreference: PERF.mobile ? 'low-power' : 'default' });
       } catch (err) { this._failed = true; return false; }
       // цвет: мягкий тон-маппинг (Khronos Neutral) — цвета детского рисунка почти не меняются, а блики не «выгорают»
       const tm = /[?&]tm=(0|aces|agx)\b/.exec(location.search || '');
@@ -131,7 +134,7 @@ window.DP = window.DP || {};
     /** Настоящие мягкие тени от солнца (PCF soft): карта 1024 (телефон/ТВ) или 2048 (компьютер), камера тени следует за видимой полосой. ?sh=0 — выключить */
     shadowSize() {
       const m = /[?&]sh=(\d+)\b/.exec(location.search || ''); if (m) return +m[1];
-      if (PERF.lowMem) return 0;
+      if (PERF.lowMem || PERF.shadows === false) return 0; // ТВ: только пятна-тени под динозаврами
       return PERF.quality === 'high' ? 2048 : 1024;
     }
     setupSun() {
@@ -285,12 +288,20 @@ window.DP = window.DP || {};
       if (this.ov) this.ov.width = this.ov.height = 0;
     }
     rebuildAll() { this.clear3d(); this._renderStatic(); this.buildProps(); }
+    /** v6: ТВ — сменить ступень качества на ходу, без нового WebGL-контекста (2D-ступень — только через новую сцену) */
+    retune() {
+      if (!this.renderer) return;
+      this._aa = this.aaMode(); this._rs = this.rsMax(); this._ad = null;
+      if (this._aa !== 'fxaa') this.freePost();
+      this.dpr = this.pickDpr(this.VW, this.VH);
+      this.rebuildAll(); this.renderer.setPixelRatio(this.dpr); this.renderer.setSize(this.VW, this.VH, false); this.sizeOverlay();
+    }
     destroy() {
       super.destroy();
       if (this._mo) this._mo.disconnect();
       if (this.ov) this.ov.remove();
       if (this.c) { this.c.removeEventListener('webglcontextlost', this._onLost); this.c.removeEventListener('webglcontextrestored', this._onRestored); }
-      this.freePost(); if (this.renderer) { this.renderer.dispose(); this.renderer = null; }
+      this.freePost(); if (this.renderer) { this.renderer.dispose(); try { this.renderer.forceContextLoss(); } catch (e) { /* ignore */ } this.renderer = null; } // контекст WebGL отдаём сразу, а не «когда-нибудь» сборщику
     }
     // ——— кадр ———
     draw() {
@@ -313,7 +324,7 @@ window.DP = window.DP || {};
     }
     modelKey(e) { const d = e.d || {}; return e.species + '|' + (d.palette || 0) + '|' + (d.sprite ? d.sprite.length + d.sprite.slice(-24) : '') + '|' + (d.legend ? 'L' : ''); }
     drawEnts3(dt) {
-      const M = this.M, seen = new Set(), THREE = T();
+      const M = this.M, seen = this._seenE || (this._seenE = new Set()), THREE = T(); seen.clear();
       for (const e of this.ents) {
         seen.add(e.uid);
         const key = this.modelKey(e);
@@ -364,12 +375,12 @@ window.DP = window.DP || {};
         }
         void THREE;
       }
-      for (const uid of [...this.models.keys()]) if (!seen.has(uid)) this.dropModel(uid);
+      if (this.models.size > seen.size) for (const uid of Array.from(this.models.keys())) if (!seen.has(uid)) this.dropModel(uid); // без копии массива каждый кадр
     }
     drawThings3(dt, night) {
       const M = this.M, TH = DP.Things3D, bw = this.baseW(), t = this.t, u2 = Math.min(this.VW || this.W, this.H) / 100;
       // зверьки и австралопитеки
-      const seen = new Set();
+      const seen = this._seenC || (this._seenC = new Set()); seen.clear();
       (this.critters || []).forEach(c => {
         seen.add(c.id);
         const key = c.kind + (c.kind === 'ape' ? ((c.src && c.src.sk) || []).join(',') : (c.def && c.def.kind));
@@ -384,9 +395,9 @@ window.DP = window.DP || {};
         if (r.kind === 'ape') { TH.setApeHat(r, c.task && c.task.type === 'hat' ? c.task.data : null); if (r.flame) { const on = night; r.flame.visible = on; r.flame.userData.glow.visible = on; } }
         if (!c.ride) this.shadow.add(X, 0, Z, s * 0.45, s * 0.3);
       });
-      for (const [id, r] of [...this.critM]) if (!seen.has(id)) { this.disposeObj(r.root); this.critM.delete(id); }
+      if (this.critM.size > seen.size) for (const [id, r] of Array.from(this.critM)) if (!seen.has(id)) { this.disposeObj(r.root); this.critM.delete(id); }
       // яйца и подарки
-      const ns = new Set();
+      const ns = this._seenN || (this._seenN = new Set()); ns.clear();
       Object.keys(this.nestPos || {}).forEach(id => {
         const n = this.nestPos[id]; if (!n.item) return; ns.add(id);
         const key = n.item.k + (n.item.r || '');
@@ -399,9 +410,9 @@ window.DP = window.DP || {};
         else { r.body.position.y = Math.abs(Math.sin(t * 3)) * 0.25; r.root.rotation.y = Math.sin(t * 0.8) * 0.3; if (Math.random() < 0.05) this.sparkle(n.x, n.y - sp * 1.5); }
         this.shadow.add(X, 0, Z, s * 0.95, s * 0.75);
       });
-      for (const [id, r] of [...this.nestM]) if (!ns.has(id)) { this.disposeObj(r.root); this.nestM.delete(id); }
+      if (this.nestM.size > ns.size) for (const [id, r] of Array.from(this.nestM)) if (!ns.has(id)) { this.disposeObj(r.root); this.nestM.delete(id); }
       // корм
-      const fs = new Set();
+      const fs = this._seenF || (this._seenF = new Set()); fs.clear();
       this.food.forEach(f => {
         fs.add(f);
         if (!f._m3) { f._m3 = TH.food(f.type); this.dyn.add(f._m3); this.foodSet.add(f); }
@@ -414,7 +425,8 @@ window.DP = window.DP || {};
       });
       this.foodSet.forEach(f => { if (!fs.has(f)) { this.disposeObj(f._m3); f._m3 = null; this.foodSet.delete(f); } });
       // мячи
-      const bs = new Set(), br = Math.max(7, bw * 0.065);
+      const bs = this._seenB || (this._seenB = new Set()), br = Math.max(7, bw * 0.065);
+      bs.clear();
       this.balls.forEach(b => {
         bs.add(b);
         if (!b._m3) { b._m3 = TH.ball(); this.dyn.add(b._m3); this.ballSet.add(b); }
@@ -531,7 +543,7 @@ window.DP = window.DP || {};
     }
     drawOverlay3() {
       const ctx = this.octx; if (!ctx || !this.ov.width) return;
-      const z = this.cam.z, sc = this.dpr * z, u = Math.min(this.VW || this.W, this.H) / 100, t = this.t, P = {};
+      const z = this.cam.z, sc = this.dpr * z, u = Math.min(this.VW || this.W, this.H) / 100, t = this.t, P = this._ovP || (this._ovP = {});
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, this.ov.width, this.ov.height);
       ctx.setTransform(sc, 0, 0, sc, -this.cam.x * sc, -this.cam.y * sc);
       // подглядывает из-за куста
@@ -549,8 +561,8 @@ window.DP = window.DP || {};
         else if (p.kind === 'z') { const al = Math.min(1, p.t * 3) * a; ctx.save(); ctx.globalAlpha = al; ctx.font = `900 ${Math.round(u * 2.4 * p.s * (0.7 + p.t * 0.3))}px Nunito, sans-serif`; ctx.fillStyle = '#e7ecff'; ctx.strokeStyle = 'rgba(30,40,90,.7)'; ctx.lineWidth = 3; ctx.textAlign = 'center'; ctx.strokeText('Z', P.x + Math.sin(p.t * 3) * 6, P.y); ctx.fillText('Z', P.x + Math.sin(p.t * 3) * 6, P.y); ctx.restore(); }
         else { ctx.fillStyle = `rgba(255,255,255,${a * 0.7})`; ctx.beginPath(); ctx.arc(P.x, P.y, u * 0.6 * p.s, 0, TAU); ctx.fill(); }
       });
-      const order = { water: 0, ground: 1, sky: 2 };
-      this.ents.slice().sort((a, b) => (order[a.habitat] - order[b.habitat]) || (a.y - b.y)).forEach(e => {
+      const order = ORDER, list = this._ovList || (this._ovList = []); list.length = 0; for (let i = 0; i < this.ents.length; i++) list.push(this.ents[i]);
+      list.sort((a, b) => (order[a.habitat] - order[b.habitat]) || (a.y - b.y)); list.forEach(e => {
         if (e._top == null || e._lx == null) return; const ox = e.x; e.x = e._lx;
         try { this.drawOverlay(ctx, e); } finally { e.x = ox; }
       });
@@ -590,10 +602,11 @@ window.DP = window.DP || {};
       if (!window.THREE) return false;
       if (/[?&]r=2d\b/.test(location.search)) return false;
       if (PERF.render2d) return false;
+      if (can3D.ok != null) return can3D.ok; // проверяем один раз: лишний пробный WebGL-контекст на ТВ стоит секунды
       const c = document.createElement('canvas'), gl = c.getContext('webgl2'); // three.js r163+ работает только с WebGL2 (старые ТВ — 2D)
-      if (!gl) return false;
+      if (!gl) return (can3D.ok = false);
       const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext();
-      return true;
+      return (can3D.ok = true);
     } catch (e) { return false; }
   }
   DP.can3D = can3D;

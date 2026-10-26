@@ -10,7 +10,9 @@ window.DP = window.DP || {};
   const mobile = () => !!(DP.Scene && DP.Scene.PERF && DP.Scene.PERF.mobile);
   const QL = () => (DP.Scene && DP.Scene.PERF && DP.Scene.PERF.quality) || (mobile() ? 'low' : 'high');
   // детализация: телефоны — как раньше (память iPhone), ТВ — средняя, компьютер — мелкая сетка, больше сглаживания, чешуя
-  const Q = () => { const q = QL(); return q === 'low' ? { res: 1.15, step: 2.8, tex: 512, sprite: 512, smooth: 3, scales: true } : q === 'mid' ? { res: 1.35, step: 2.2, tex: 1024, sprite: 1024, smooth: 4, scales: true } : { res: 1.6, step: 1.7, tex: 1024, sprite: 1024, smooth: 5, scales: true }; };
+  // v6: телевизор — сетка крупнее (в 2–2,5 раза меньше треугольников) и без карты чешуи на простых ступенях
+  const Q = () => { const o = Q0(), L = DP.Scene && DP.Scene.PERF && DP.Scene.PERF.tvL; if (L) { o.step = L.dstep || o.step; o.scales = !!L.detail; } return o; };
+  const Q0 = () => { const q = QL(); return q === 'low' ? { res: 1.15, step: 2.8, tex: 512, sprite: 512, smooth: 3, scales: true } : q === 'mid' ? { res: 1.35, step: 2.2, tex: 1024, sprite: 1024, smooth: 4, scales: true } : { res: 1.6, step: 1.7, tex: 1024, sprite: 1024, smooth: 5, scales: true }; };
   const SCALE = 4.2 / 428; // единиц сцены на единицу рисунка (ширина рисунка = 4.2 при size=1)
   const ORIGIN = { x: 200, y: 248 }; // точка между лап на земле
   // толщина: доля «круглого» сечения по видам и частям

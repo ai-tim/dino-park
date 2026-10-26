@@ -357,6 +357,7 @@
       }, { wide: true });
     },
     async tv() {
+      const tvqMine = () => { try { return localStorage.getItem('dp.tvq.phone') || 'auto'; } catch (e) { return 'auto'; } };
       if (DEMO) { UI.show(`${UI.head('Открыть на другом экране', { back: true })}<div class="empty"><div class="big">🎬</div>В демо-режиме парк не сохраняется. Создай свой парк — и его можно будет открыть на телевизоре.</div><div class="btn-row"><a class="btn green" href="parks.html">Создать парк</a></div>`, (p) => UI.wire(p, { back: backTo })); return; }
       UI.show(`${UI.head('Открыть на другом экране', { back: true })}<div class="spinner"></div>`, (p) => UI.wire(p, { back: backTo }), { wide: true });
       const info = await Y.tvCode(park);
@@ -377,8 +378,17 @@
             <div class="note">Действует 5 минут. По истечении — генерируется новый.</div>
             <div class="timer" id="tv-timer" style="margin-top:8px"></div>
             <button class="btn" style="margin-top:12px" id="tv-open">🪟 Открыть в новой вкладке</button></div>
-        </div>${warn}`, (p) => {
+        </div>${warn}
+        <div class="tv-box tv-q" style="margin-top:12px"><h3>⚙️ Качество картинки на телевизоре</h3>
+          <div class="btn-row">${[['auto', '🤖 Авто'], ['smooth', '🏃 Плавно'], ['pretty', '✨ Красиво']].map(([m, t]) => `<button class="btn${tvqMine() === m ? ' green' : ''}" data-tvq="${m}">${t}</button>`).join('')}</div>
+          <div class="note">«Авто» подбирает сам. Если телевизор подтормаживает — «Плавно». Можно переключить и пультом: кнопка «⚙️ Качество» на экране ТВ.</div></div>`, (p) => {
         UI.wire(p, { back: backTo });
+        p.querySelectorAll('[data-tvq]').forEach(b => b.onclick = () => {
+          const m = b.dataset.tvq; try { localStorage.setItem('dp.tvq.phone', m); } catch (e) { /* ignore */ }
+          Y.sendEvent(park, { type: 'tvq', mode: m });
+          p.querySelectorAll('[data-tvq]').forEach(x => x.classList.toggle('green', x === b));
+          U.toast('📺 Качество на ТВ: ' + b.textContent.replace(/^\S+\s/, ''), 2500);
+        });
         p.querySelector('#tv-open').onclick = () => window.open(url, '_blank');
         const off = p.querySelector('#tv-off'); if (off) off.onclick = async () => { await Y.tvDisconnect(); U.toast('📴 Телевизоры отключены', 3000); screens.tv(); };
         const tick = () => {
