@@ -514,7 +514,7 @@
     if (imp || Date.now() - lastPush > 60000) { lastPush = Date.now(); commit(); }
     return ev;
   }
-  function lifeInbox() { const got = Life.applyInbox(park); got.forEach(it => say(`🎁 Подарок от Динопарка: ${Life.giftEmoji(it.g)} ${Life.giftName(it.g)}${it.m ? ' — ' + it.m : ''}`, 5000)); if (got.length) { updateHud(); commitSoon(); } }
+  function lifeInbox() { const got = Life.applyInbox(park); got.forEach(it => say(`🎁 Подарок от Динопарка: ${Life.giftEmoji(it.g)} ${Life.giftName(it.g)}${it.m ? ' — ' + it.m : ''}`, 5000)); if (got.length) { updateHud(); commitSoon(); } celebrateLegend(legendFromGifts()); }
   function pickup(item) {
     const pos = scene.nestPos && scene.nestPos[item.id];
     const it = Life.collect(park, item.id); if (!it) return null;
@@ -597,6 +597,7 @@
     park.life.redeemed.push(p.n); park.life.redeemed = park.life.redeemed.slice(-200);
     used.push(p.n); localStorage.setItem('dp_redeemed', JSON.stringify(used.slice(-200)));
     lifeEvents(Life.checkAch(park)); updateHud(); commit();
+    p.made = legendFromGifts();
     return p;
   }
   // короткий код DINO-XXXX-XXXX: ищем его хеш в подписанной ленте подарков (js/gifts.js)
@@ -611,7 +612,47 @@
     park.life.redeemed.push(p.id); park.life.redeemed = park.life.redeemed.slice(-200);
     if (p.u === 'once') { used.push(p.id); localStorage.setItem('dp_redeemed', JSON.stringify(used.slice(-200))); }
     lifeEvents(Life.checkAch(park)); updateHud(); commit();
+    p.made = legendFromGifts();
     return p;
+  }
+  // Легендарный динозавр из подарка администратора. Раньше подарок давал только «жетон» (L.tokens.legend), а самого
+  // динозавра надо было вручную выбрать в «Яйца» → «🌟 Золотой динозавр» — поэтому подарок «пришёл», а в парке никого.
+  // Теперь динозавр появляется сразу. Записи в журнале подарков помечаются uid динозавра (g.d) — это же чинит старые
+  // парки: при открытии на каждый неотмеченный подарок, пока есть жетон, создаётся ровно один динозавр.
+  function legendFromGifts() {
+    if (DEMO || !park || !park.life) return [];
+    const L = park.life; if (!(L.tokens && L.tokens.legend > 0)) return [];
+    const pend = (L.gifts || []).filter(g => g && g.adm && g.g === 'legend' && !g.d).reverse(); // старые первыми
+    const made = [];
+    for (const gl of pend) {
+      if (!(L.tokens.legend > 0)) break;
+      if (park.dinos.length >= 80) { showHint('🌟 Золотой динозавр ждёт в «Яйца»: в парке уже 80 динозавров', 5000); break; }
+      const pool = DP.Dinos.SPECIES.filter(sp => sp.habitat !== 'water'), sp = pool[Math.floor(Math.random() * pool.length)] || DP.Dinos.SPECIES[0];
+      L.tokens.legend--;
+      const d = Object.assign({ uid: U.uid(), added: Date.now(), loc: park.view, owner: ME, needs: N.fresh(Date.now()) },
+        { species: sp.id, palette: DP.Dinos.LEGEND, legend: true, sprite: null, name: 'Золотой ' + sp.name.toLowerCase(), diet: sp.diet, habitat: sp.habitat });
+      park.dinos.push(d); gl.d = d.uid; made.push(d);
+    }
+    if (made.length) { lifeEvents(Life.checkAch(park)); updateHud(); commit(); }
+    return made;
+  }
+  /** Показать нового легендарного: поставить рядом с камерой, подлететь, праздник */
+  function celebrateLegend(list, now) {
+    if (!list || !list.length) return;
+    const show = () => {
+      if (UI.isOpen() && !now) return setTimeout(show, 800);
+      now = false;
+      const d = list[list.length - 1], e = scene.ent(d.uid);
+      list.forEach((x, i) => {
+        const en = scene.ent(x.uid); if (!en) return;
+        const v = scene.view(), z = scene.zone(en.habitat || 'ground'), cx = (v.x0 + v.x1) / 2 + (i - (list.length - 1) / 2) * 60;
+        en.x = en.tx = U.clamp(cx, z.x0 + 20, z.x1 - 20); en.y = en.ty = U.clamp((z.y0 + z.y1) / 2, z.y0, z.y1); en.enter = 0; en.state = 'wander';
+      });
+      if (e) { scene.closeUp(d.uid, 2.2); setTimeout(() => { scene.hearts(e.x, e.y - 40); scene.jump(d.uid, '🌟'); }, 600); }
+      showHint(list.length > 1 ? `🌟 В парке ${list.length} новых золотых динозавра!` : `🌟 ${d.name} появился в парке! Нажми «Отдалить», чтобы увидеть всех`, 5000);
+      if (!DEMO) setTimeout(() => fire({ type: 'jump', uid: d.uid, text: '🌟' }), 1200);
+    };
+    setTimeout(show, 300);
   }
   // подарки «всем» и «сюрприз этому парку» — приходят сами при открытии парка
   let giftBusy = false;
@@ -625,11 +666,12 @@
     list.forEach(p => { Life.grant(park, p.g, p.m, 'Динопарк'); park.life.redeemed.push(p.id); });
     park.life.redeemed = park.life.redeemed.slice(-200);
     lifeEvents(Life.checkAch(park)); updateHud(); commit();
+    const made = legendFromGifts();
     const show = () => {
       if (UI.isOpen()) return setTimeout(show, 1500);
       UI.show(`${UI.head('🎁 Тебе подарок!', { sub: list.length > 1 ? 'Подарков: ' + list.length : 'От Динопарка' })}
         <div class="gift-list">${list.map(p => `<div class="gift" data-gid="${U.esc(p.id)}"><span class="e">${Life.giftEmoji(p.g)}</span><div><b>${U.esc(Life.giftName(p.g))}</b>${p.m ? `<div class="s">${U.esc(p.m)}</div>` : ''}</div></div>`).join('')}</div>
-        <div class="btn-row"><button class="btn green" id="gf-ok">Ура, спасибо!</button></div>`, (pp) => { pp.querySelector('#gf-ok').onclick = () => UI.close(); });
+        <div class="btn-row"><button class="btn green" id="gf-ok">Ура, спасибо!</button></div>`, (pp) => { pp.querySelector('#gf-ok').onclick = () => { UI.close(); celebrateLegend(made); }; });
     };
     setTimeout(show, 600);
     return list;
@@ -858,7 +900,7 @@
           p.querySelector('#gift-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') p.querySelector('#gift-redeem').click(); });
           p.querySelector('#gift-redeem').onclick = async () => {
             const msg = p.querySelector('#gift-msg'), btn = p.querySelector('#gift-redeem'); btn.disabled = true; msg.textContent = '⏳ Проверяем…';
-            try { const r = await redeem(p.querySelector('#gift-code').value); msg.textContent = `✓ Получено: ${Life.giftEmoji(r.g)} ${Life.giftName(r.g)}${r.m ? ' — ' + r.m : ''}`; msg.className = 'note ok'; setTimeout(() => { if (current === 'gifts') go('gifts'); }, 1600); }
+            try { const r = await redeem(p.querySelector('#gift-code').value); msg.textContent = `✓ Получено: ${Life.giftEmoji(r.g)} ${Life.giftName(r.g)}${r.m ? ' — ' + r.m : ''}`; msg.className = 'note ok'; if (r.made && r.made.length) { setTimeout(() => { UI.close(); celebrateLegend(r.made, true); }, 1200); } else setTimeout(() => { if (current === 'gifts') go('gifts'); }, 1600); }
             catch (e) { msg.textContent = '⚠️ ' + e.message; msg.className = 'note err'; btn.disabled = false; }
           };
         }, { wide: true });
@@ -1069,5 +1111,5 @@
   else if (park.dinos.length && !localStorage.getItem('dp_news_v3')) go('news');
   v3Start();
   if (window.DPBOOT) window.DPBOOT.ready = true; // загрузчик (js/boot.js): страница запустилась
-  window.dpPark = { get park() { return park; }, screens, redeem, feedGifts, processPhoto, feedAll, feedSecret, travelTo, newDino, commit, mode, owner: ME, demo: DEMO, lifeTick, pickup, startHide, closeUp, playAll, sleepAll, redeem, doShare, lifeEvents };
+  window.dpPark = { get park() { return park; }, screens, redeem, feedGifts, legendFromGifts, processPhoto, feedAll, feedSecret, travelTo, newDino, commit, mode, owner: ME, demo: DEMO, lifeTick, pickup, startHide, closeUp, playAll, sleepAll, redeem, doShare, lifeEvents };
 })().catch(function (e) { if (window.DPBOOT && window.DPBOOT.fail) window.DPBOOT.fail(e, 'запуск'); else throw e; });

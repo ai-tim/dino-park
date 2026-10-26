@@ -269,7 +269,7 @@ function createServer(opts) {
         ? { id: n.id, k: n.k, uid: n.uid, r: RARITIES.includes(n.r) ? n.r : undefined, g: slug(n.g) || undefined, t: num(n.t, Date.now()) } : null),
       tribe: arr(l.tribe, 6, a => a && typeof a === 'object' && slug(a.id) ? { id: a.id, name: str(a.name, 12), xp: num(a.xp, 0), sk: arr(a.sk, 20, slug), t: num(a.t, Date.now()) } : null),
       mammals: arr(l.mammals, 10, a => a && typeof a === 'object' && slug(a.id) ? { id: a.id, kind: slug(a.kind) || 'shrew', name: str(a.name, 20), xp: num(a.xp, 0), t: num(a.t, Date.now()) } : null),
-      gifts: arr(l.gifts, 200, g => g && typeof g === 'object' ? { g: slug(g.g) || undefined, e: str(g.e, 8) || undefined, name: str(g.name, 40) || undefined, msg: str(g.msg, 140) || undefined, from: str(g.from, 40) || undefined, uid: typeof g.uid === 'string' && UID_RE.test(g.uid) ? g.uid : undefined, adm: g.adm ? 1 : undefined, t: num(g.t, Date.now()) } : null),
+      gifts: arr(l.gifts, 200, g => g && typeof g === 'object' ? { g: slug(g.g) || undefined, e: str(g.e, 8) || undefined, name: str(g.name, 40) || undefined, msg: str(g.msg, 140) || undefined, from: str(g.from, 40) || undefined, uid: typeof g.uid === 'string' && UID_RE.test(g.uid) ? g.uid : undefined, d: typeof g.d === 'string' && UID_RE.test(g.d) ? g.d : undefined, adm: g.adm ? 1 : undefined, t: num(g.t, Date.now()) } : null),
       redeemed: arr(l.redeemed, 200, v => (typeof v === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(v) ? v : null)),
       ach: arr(l.ach, 60, slug), ack: arr(l.ack, 100, slug), locs: arr(l.locs, 10, slug), inbox: [],
       stats: nums(l.stats, null, 1e9), acc: nums(l.acc, null, 1e9), hats: nums(l.hats, HAT_IDS, 99), tokens: nums(l.tokens, ['legend'], 10),
