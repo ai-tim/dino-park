@@ -10,7 +10,10 @@ const fs = require('fs'), path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 let acorn = null; try { acorn = require('acorn'); } catch (e) { /* нет — пропуск */ }
 const results = []; const ok = (n, c, i) => { results.push(!!c); console.log((c ? '✅' : '❌') + ' ' + n + (i ? ' — ' + i : '')); };
-const scripts = (html) => [...fs.readFileSync(path.join(ROOT, html), 'utf8').matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => !/^https?:/.test(s));
+const scripts = (html) => {
+  const src = fs.readFileSync(path.join(ROOT, html), 'utf8'), m = /var MODERN = (\[[^\]]*\])/.exec(src); // tv.html: список в ES5-загрузчике
+  return (m ? JSON.parse(m[1]) : [...src.matchAll(/<script src="([^"]+)"/g)].map(x => x[1])).filter(s => !/^https?:/.test(s));
+};
 const files = [...new Set(['tv.html', 'park.html', 'index.html', 'parks.html'].flatMap(scripts))];
 const tvFiles = scripts('tv.html');
 if (acorn) {
@@ -25,6 +28,20 @@ const BAD = [[/\.replaceAll\(/, 'String.replaceAll'], [/\.at\(-?\d/, 'Array.at']
 for (const f of files.filter(f => !/vendor/.test(f))) {
   const src = fs.readFileSync(path.join(ROOT, f), 'utf8'); const hits = BAD.filter(([re]) => re.test(src)).map(b => b[1]);
   ok(`${f}: без новых API`, !hits.length, hits.join(', '));
+}
+// ES5-загрузчик tv.html и наследная сборка js/legacy (для Tizen 2.4–3.0, webOS 3, старых WebView)
+const tvHtml = fs.readFileSync(path.join(ROOT, 'tv.html'), 'utf8');
+if (acorn) {
+  [...tvHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)].forEach((m, i) => { let err = null; try { acorn.parse(m[1], { ecmaVersion: 5 }); } catch (e) { err = e.message; } ok(`tv.html: встроенный скрипт ${i + 1} — чистый ES5`, !err, err || ''); });
+  for (const f of ['js/legacy/tv-1.js', 'js/legacy/tv-2.js']) { let err = null; try { acorn.parse(fs.readFileSync(path.join(ROOT, f), 'utf8'), { ecmaVersion: 5 }); } catch (e) { err = e.message; } ok(`${f}: чистый ES5`, !err, err || ''); }
+}
+ok('tv.html: есть обработчик ошибок и сторож запуска (не пустой экран)', /window\.onerror|W\.onerror/.test(tvHtml) && /сторож/.test(tvHtml) && /bootmsg/.test(tvHtml));
+{
+  const bl = fs.readFileSync(path.join(ROOT, 'tools/build-legacy.js'), 'utf8'), arr = (n) => JSON.parse(new RegExp('const ' + n + ' = (\\[[^\\]]*\\])').exec(bl)[1].replace(/'/g, '"'));
+  const hash = (names) => require('crypto').createHash('sha256').update(names.map(n => fs.readFileSync(path.join(ROOT, 'js', n + '.js'), 'utf8')).join('\n')).digest('hex').slice(0, 16);
+  const G1 = arr('G1'), G2 = arr('G2');
+  ok('наследная сборка покрывает все скрипты ТВ (кроме three.js)', tvFiles.filter(f => !/vendor|config/.test(f)).map(f => f.replace(/^js\/|\.js$/g, '')).join() === G1.concat(G2).join());
+  for (const [f, g] of [['tv-1.js', G1], ['tv-2.js', G2]]) ok(`js/legacy/${f} свежая (пересоберите: node tools/build-legacy.js)`, fs.readFileSync(path.join(ROOT, 'js/legacy', f), 'utf8').includes('src:' + hash(g)));
 }
 // ТВ-страница: ещё строже — то, чего нет в Chromium 56–63 (Tizen 4–5)
 const TV_BAD = [[/Object\.fromEntries\(/, 'Object.fromEntries (Chrome 73)'], [/\.flat\(\)/, 'Array.flat (Chrome 69)'], [/\.matchAll\(/, 'matchAll (Chrome 73)'], [/\bglobalThis\b/, 'globalThis (Chrome 71)'], [/\.trimStart\(|\.trimEnd\(/, 'trimStart/End (Chrome 66)'], [/new ResizeObserver/, 'ResizeObserver (Chrome 64)'], [/Promise\.allSettled/, 'Promise.allSettled (Chrome 76)']];
@@ -62,9 +79,9 @@ async function runtime() {
       ui: !!document.querySelector('#code') && !!document.querySelector('#kp'),
       pad: '7'.padStart(3, '0'), fin: typeof Promise.prototype.finally,
       crypto: await DP.relay.selfTest().then(() => 'ok', (e) => e.kind + ': ' + e.message),
-      can3D: DP.can3D ? DP.can3D() : null
+      can3D: DP.can3D ? DP.can3D() : null, boot: DPBOOT.mode + (document.querySelector('#bootmsg') ? ' +сообщение об ошибке' : '')
     }));
-    ok('Tizen-подобный ТВ: экран ввода кода и пульт-клавиатура на месте', info.ui);
+    ok('Tizen-подобный ТВ: экран ввода кода и пульт-клавиатура на месте, современная сборка', info.ui && info.boot === 'modern', info.boot);
     ok('Tizen-подобный ТВ: полифиллы padStart / finally работают', info.pad === '007' && info.fin === 'function');
     ok('Tizen-подобный ТВ: WebCrypto (ECDH, PBKDF2, AES-GCM) работает', info.crypto === 'ok', info.crypto);
     ok('Tizen-подобный ТВ: без WebGL2 3D не включается (будет 2D, а не ошибка three.js)', info.can3D === false);
@@ -74,6 +91,31 @@ async function runtime() {
     await p.waitForFunction(() => document.querySelector('#err').dataset.kind, null, { timeout: 30000 }).catch(() => {});
     const w = await p.evaluate(() => ({ k: document.querySelector('#err').dataset.kind, t: document.querySelector('#err').textContent, retry: !!document.querySelector('#retry') }));
     ok('Tizen-подобный ТВ: нет связи с ретранслятором → своя ошибка и «Попробовать ещё раз»', w.k === 'net' && w.retry && !/не найден|истёк/.test(w.t), w.k + ' · ' + w.t.slice(0, 80));
+    await ctx.close();
+    // наследная ES5-сборка (как на Tizen 3 / webOS 3) — экран кода работает, шифрование есть
+    const c2 = await b.newContext({ viewport: { width: 1920, height: 1080 }, userAgent: 'Mozilla/5.0 (SMART-TV; Linux; Tizen 3.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/3.0 TV Safari/538.1' });
+    await c2.addInitScript(() => { window.DP_CONFIG = { RELAYS: [] }; });
+    const p2 = await c2.newPage(); const e2 = []; p2.on('pageerror', e => e2.push(e.message));
+    await p2.goto(BASE + '/tv.html?legacy=1'); await p2.waitForTimeout(2500);
+    const l = await p2.evaluate(async () => ({ mode: DPBOOT.mode, ready: DPBOOT.ready, keys: document.querySelectorAll('#kp [data-k]').length, boot: !!document.querySelector('#bootmsg'), errs: DPBOOT.errors.map(e => e.m), crypto: await DP.relay.selfTest().then(() => 'ok', (e) => e.kind + ': ' + e.message), three: !!window.THREE }));
+    ok('наследная ES5-сборка: экран ввода кода работает без ошибок', l.mode === 'legacy' && l.ready && l.keys === 12 && !l.boot && !e2.length && !l.errs.length, JSON.stringify(l).slice(0, 200));
+    ok('наследная ES5-сборка: шифрование работает, three.js не грузится', l.crypto === 'ok' && !l.three, l.crypto);
+    await c2.close();
+    // скрипт не выполнился (как синтаксис, которого браузер ТВ не знает) → понятное сообщение вместо пустого экрана
+    const c3 = await b.newContext({ viewport: { width: 1280, height: 720 } }); const p3 = await c3.newPage();
+    await p3.route('**/js/tv.js', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: 'let { a } = ; // «новый синтаксис», которого нет в браузере ТВ' }));
+    await p3.goto(BASE + '/tv.html'); await p3.waitForSelector('#bootmsg', { timeout: 10000 }).catch(() => {});
+    const m3 = await p3.evaluate(() => { const d = document.querySelector('#bootmsg'); return d ? d.textContent : ''; });
+    ok('ТВ: скрипт не запустился → сообщение «не запустился» + «Перезагрузить» (не пустой экран)', /не запустился/.test(m3) && /Перезагрузить/.test(m3), m3.slice(0, 90));
+    await c3.close();
+    // файл сайта не загрузился → сообщение про интернет
+    const c4 = await b.newContext({ viewport: { width: 1280, height: 720 } }); const p4 = await c4.newPage();
+    await p4.route('**/js/relay.js', (r) => r.fulfill({ status: 503, body: '' }));
+    await p4.goto(BASE + '/tv.html'); await p4.waitForSelector('#bootmsg', { timeout: 10000 }).catch(() => {});
+    const m4 = await p4.evaluate(() => { const d = document.querySelector('#bootmsg'); return d ? d.textContent : ''; });
+    ok('ТВ: файл сайта не загрузился → сообщение «проверьте интернет»', /интернет/.test(m4), m4.slice(0, 90));
+    await c4.close();
+    // в нормальном запуске сообщения нет
   } finally { await b.close(); }
 }
 runtime().catch(e => ok('проверка в браузере без исключений', false, e.message)).then(() => {

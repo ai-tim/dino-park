@@ -156,6 +156,7 @@ window.DP = window.DP || {};
     /** ТВ: войти по 5-значному коду, получить парк и подписаться только на чтение */
     async tvJoin(code, onStatus) {
       code = String(code || '').replace(/[\uFF10-\uFF19]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFF10 + 48)).replace(/\D/g, '');
+      if (!mode) await connect(); // код могли ввести, пока связь ещё проверяется (≤ 3 с)
       if (mode === 'server') {
         try { const r = await request({ t: 'tvjoin', code }); sub = { id: r.park.id, tv: true, token: r.token }; API.tvToken = r.token; return r.park; }
         catch (e) { if (!/не найден|истёк/i.test(e.message)) throw e; /* пробуем локально */ var serr = e; }

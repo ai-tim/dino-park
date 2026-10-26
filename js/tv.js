@@ -1,15 +1,11 @@
 /* Динопарк — экран телевизора: ввод 5-значного кода → полноэкранный просмотр парка с живой синхронизацией.
  * Без сервера (GitHub Pages) связь с телефоном идёт через интернет-ретранслятор со сквозным шифрованием (js/relay.js).
- * Только синтаксис ES2017: браузеры телевизоров LG webOS (Chromium 68–87). */
+ * Только синтаксис ES2017 (LG webOS Chromium 68+, Samsung Tizen 4+ = Chromium 56+). Для более старых ТВ загрузчик tv.html
+ * подключает js/legacy/tv-*.js — тот же код, переведённый в ES5 (tools/build-legacy.js). */
 (async function () {
   const U = DP.util, Y = DP.sync, $ = (s) => document.querySelector(s);
   let scene = null, park = null;
-  if (DP.music) DP.music.button('br');
-  const mode = await Y.connect();
-  const relayOk = !!(DP.relay && DP.relay.supported());
-  $('#mode').innerHTML = mode === 'server' ? '<span class="status-dot on"></span>Сервер подключён'
-    : relayOk ? '<span class="status-dot on"></span>Связь с телефоном через интернет — без регистрации, зашифровано'
-      : '<span class="status-dot"></span>Этот браузер не поддерживает защищённую связь — откройте сайт по https';
+  try { if (DP.music) DP.music.button('br'); } catch (e) { /* без музыки */ }
 
   // экранная клавиатура: удобно с пульта (стрелки + OK)
   const kp = $('#kp');
@@ -121,6 +117,15 @@
   ['mousemove', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, () => { if (park) wake(); }));
   document.body.addEventListener('click', (e) => { if (!park || e.target.id !== 'park') return; wake(); const r = e.target.getBoundingClientRect(); const d = scene && scene.hitScreen(e.clientX - r.left, e.clientY - r.top); if (d) scene.jump(d.uid); });
 
+  // экран ввода кода уже готов (даже если связь ещё устанавливается) — загрузчик tv.html больше не ждёт
+  if (window.DPBOOT) window.DPBOOT.ready = true;
+  $('#mode').textContent = '⏳ Проверяем связь…';
+  const mode = await Y.connect();
+  const relayOk = !!(DP.relay && DP.relay.supported());
+  $('#mode').innerHTML = mode === 'server' ? '<span class="status-dot on"></span>Сервер подключён'
+    : relayOk ? '<span class="status-dot on"></span>Связь с телефоном через интернет — без регистрации, зашифровано'
+      : '<span class="status-dot"></span>Этот браузер не поддерживает защищённую связь — откройте сайт по https';
+
   const hm = /[#&]code=(\d{5})/.exec(location.hash), code = U.param('code') || (hm && hm[1]);
   if (code) { $('#code').value = code; join(code); }
   else {
@@ -133,4 +138,4 @@
       }
     } catch (e) { $('#err').textContent = '⚠️ ' + e.message + ' — или введите новый код'; }
   }
-})();
+})().catch(function (e) { if (window.DPBOOT && window.DPBOOT.fail) window.DPBOOT.fail(e); else throw e; });
