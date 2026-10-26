@@ -167,9 +167,9 @@ const S = {
 
 (async () => {
   let skipped = false;
-  for (const k of SCEN) { if (!S[k]) continue; console.log('— сценарий ' + k); const r = await S[k]().catch(e => { ok('сценарий ' + k + ' без исключений', false, e.message.slice(0, 200)); }); if (r === 'skip') { skipped = true; break; } }
+  for (const k of SCEN) { if (!S[k]) continue; console.log('— сценарий ' + k); const r = await S[k]().catch(e => { ok('сценарий ' + k + ' без исключений', false, e.message.slice(0, 200)); }); if (r === 'skip') { skipped = true; if (results.length) ok('сценарий ' + k + ': нет связи с брокерами — пропущен', false); break; } }
   for (const b of Object.values(browsers)) await b.close().catch(() => {});
-  if (skipped) { console.log('⏭️ Нет связи с публичными брокерами — тест пропущен'); process.exit(0); }
+  if (skipped && !results.length) { console.log('⏭️ Нет связи с публичными брокерами — тест пропущен'); process.exit(0); }
   const failed = results.filter(r => !r.pass).length;
   const errs = [...new Set(errors)];
   if (errs.length) console.log('Ошибки в консоли:\n  ' + errs.join('\n  '));
