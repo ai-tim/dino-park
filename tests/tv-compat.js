@@ -6,12 +6,13 @@
  *   b  телефон iPhone (WebKit), часы −10 мин → ТВ Tizen, часы +10 мин
  *   c  код вводят на ТВ через 75 с; телефон за это время перерисовывает экран «ТВ» — код не должен меняться
  *   d  один брокер на ТВ «лежит» (недоступный адрес) — сопряжение всё равно проходит
+ *   f  очень старый ТВ (Tizen 3 / webOS 3): наследная ES5-сборка (?legacy=1) — сопряжение и события
  *   e  все брокеры на ТВ недоступны → «не удалось связаться с сервером соединения» (а не «код не найден») + повтор
  * Если ни один брокер недоступен с телефона — тест пропускается (код выхода 0).
  */
 const pw = require('playwright-core');
 const BASE = (process.env.BASE || 'http://127.0.0.1:8765').replace(/\/$/, '');
-const SCEN = (process.env.SCEN || 'a,b,c,d,e').split(',');
+const SCEN = (process.env.SCEN || 'a,b,c,d,e,f').split(',');
 const DELAY = +(process.env.DELAY_MS || 75000);
 const results = [], errors = [];
 const ok = (name, cond, info) => { results.push({ name, pass: !!cond }); console.log((cond ? '✅' : '❌') + ' ' + name + (info ? ' — ' + info : '')); };
@@ -70,14 +71,14 @@ async function phoneWithCode(kind, label, init) {
   const code = (await phone.textContent('.tv-code')).replace(/\D/g, '');
   return { ctx, phone, code, online };
 }
-async function tvPage(label, { relays, skew, old = true, joinMs = 30000 } = {}) {
+async function tvPage(label, { relays, skew, old = true, joinMs = 30000, q = '' } = {}) {
   const b = await launch('cr');
   const ctx = await b.newContext({ viewport: { width: 1920, height: 1080 }, userAgent: TIZEN_UA, locale: 'ru-RU' });
   await ctx.addInitScript((cfg) => { window.DP_CONFIG = cfg; }, Object.assign({ JOIN_MS: joinMs }, relays ? { RELAYS: relays } : {}));
   if (old) await ctx.addInitScript(OLD_TV);
   if (skew) await ctx.addInitScript(SKEW, skew);
   const tv = await ctx.newPage(); watch(tv, label + ' tv');
-  await tv.goto(BASE + '/tv.html'); await tv.waitForTimeout(1200);
+  await tv.goto(BASE + '/tv.html' + q); await tv.waitForTimeout(1200);
   return { ctx, tv };
 }
 async function enter(tv, code, label, phone) {
@@ -142,6 +143,14 @@ const S = {
     const P = await phoneWithCode('wk', L); if (!P.online) return 'skip';
     const { ctx, tv } = await tvPage(L, { relays: [DEAD].concat(BROKERS) });
     await enter(tv, P.code, L, P.phone);
+    await P.ctx.close(); await ctx.close();
+  },
+  async f() {
+    const L = 'iPhone → старый ТВ (ES5-сборка)';
+    const P = await phoneWithCode('wk', L); if (!P.online) return 'skip';
+    const { ctx, tv } = await tvPage(L, { q: '?legacy=1' });
+    ok(`[${L}] ТВ загрузил наследную сборку`, await tv.evaluate(() => DPBOOT.mode === 'legacy' && DPBOOT.ready && !window.THREE));
+    if (await enter(tv, P.code, L)) await events(P.phone, tv, L);
     await P.ctx.close(); await ctx.close();
   },
   async e() {
