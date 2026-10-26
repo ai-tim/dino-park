@@ -145,6 +145,56 @@ const CANVAS_PROBE = () => {
   await fits('Яйца', () => window.dpPark.screens.eggs(), 'mobile-v3-eggs.png');
   await fits('Достижения', () => window.dpPark.screens.ach(), 'mobile-v3-ach.png');
   await fits('Подарки', () => window.dpPark.screens.gifts(), 'mobile-v3-gifts.png');
+  // v5: меню не «ездит» — страница не прокручивается, панель закреплена при прокрутке, смене размера (панель Safari/клавиатура) и обновлении данных
+  await page.evaluate(() => DP.ui.close()); await page.waitForTimeout(300);
+  await page.evaluate(() => window.dpPark.screens.menu()); await page.waitForTimeout(700);
+  const box = () => page.evaluate(() => { const p = document.querySelector('.overlay .panel'); if (!p) return null; const r = p.getBoundingClientRect(); return { t: Math.round(r.top), l: Math.round(r.left), w: Math.round(r.width), sy: Math.round(scrollY), st: p.scrollTop }; });
+  const b0 = await box();
+  await page.evaluate(() => { window.scrollTo(0, 400); document.documentElement.scrollTop = 400; window.dispatchEvent(new Event('scroll')); }); await page.waitForTimeout(250);
+  const b1 = await box();
+  await page.evaluate(() => { document.dispatchEvent(new WheelEvent('wheel', { deltaY: 600, bubbles: true })); window.scrollBy(0, 600); document.documentElement.scrollTop = 600; document.body.scrollTop = 600; }); await page.waitForTimeout(250);
+  const b1b = await box();
+  await page.setViewportSize({ width: dev.viewport.width, height: dev.viewport.height - 90 }); await page.waitForTimeout(400); // спряталась/появилась панель Safari
+  const b2 = await box();
+  await page.setViewportSize(dev.viewport); await page.waitForTimeout(400);
+  const b3 = await box();
+  await page.evaluate(() => { const p = document.querySelector('.overlay .panel'); p.scrollTop = 40; }); const st0 = await page.evaluate(() => document.querySelector('.overlay .panel').scrollTop);
+  await page.evaluate(() => window.dpPark.screens.menu(true)); await page.waitForTimeout(200); // как при синхронизации парка
+  const b4 = await box();
+  const same = (a, b) => a && b && Math.abs(a.t - b.t) <= 2 && Math.abs(a.l - b.l) <= 2;
+  ok('v5: меню закреплено — прокрутка страницы его не сдвигает', same(b0, b1) && b1.sy === 0 && same(b0, b1b) && b1b.sy === 0, JSON.stringify({ b0, b1, b1b }));
+  ok('v5: меню на месте после смены высоты экрана (панель Safari)', same(b0, b2) && same(b0, b3), JSON.stringify({ b2, b3 }));
+  ok('v5: обновление меню при синхронизации не сбрасывает прокрутку и не двигает панель', same(b0, b4) && b4.st === st0, JSON.stringify({ st0, b4 }));
+  await page.evaluate(() => DP.ui.close()); await page.waitForTimeout(400);
+
+  // v5: выбор динозавров открывается быстро и не подвешивает кадр (миниатюры — маленькие готовые картинки)
+  const pick = [];
+  for (let i = 0; i < 3; i++) {
+    pick.push(await page.evaluate(async () => {
+      const t0 = performance.now(); let maxGap = 0, last = t0, run = true;
+      const tick = () => { const n = performance.now(); maxGap = Math.max(maxGap, n - last); last = n; if (run) requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+      window.dpPark.screens.ready(); const t1 = performance.now();
+      await new Promise(r => setTimeout(r, 1200)); run = false;
+      const n = document.querySelectorAll('.overlay [data-sp]').length; DP.ui.close();
+      return { open: Math.round(t1 - t0), gap: Math.round(maxGap), cards: n };
+    }));
+    await page.waitForTimeout(400);
+  }
+  const pk = pick[pick.length - 1];
+  ok('v5: выбор динозавров открывается быстро (< 300 мс, кадр не замирает > 700 мс)', pick.every(x => x.cards >= 5) && pk.open < 300 && pk.gap < 700, JSON.stringify(pick));
+
+  // v5: после «Покормить всех» касание экрана сразу открывает меню (а корм — отдельной кнопкой «Ещё корм»)
+  await page.evaluate(() => window.dpPark.feedAll()); await page.waitForTimeout(500);
+  const fb = await page.evaluate(() => { const b = document.querySelector('#feed-more'); return !!b && !b.classList.contains('hidden'); });
+  const food0 = await page.evaluate(() => (window.dpScene.food || []).length);
+  await page.evaluate(() => DP.ui.close()); await page.waitForTimeout(200);
+  const spot = await page.evaluate(() => { const S = window.dpScene, c = S.c.getBoundingClientRect(); for (let j = 0; j < 12; j++) for (let i = 0; i < 8; i++) { const x = c.width * (0.1 + i * 0.11), y = c.height * (0.35 + j * 0.045), el = document.elementFromPoint(x, y); if (el !== S.c) continue; const w = S.toWorld(x, y); if (!S.hit(w.x, w.y) && !(S.hitExtra && S.hitExtra(w.x, w.y)) && !(S.hitHidden && S.hitHidden(w.x, w.y))) return { x: Math.round(x), y: Math.round(y) }; } return { x: Math.round(c.width / 2), y: Math.round(c.height * 0.6) }; });
+  await page.touchscreen.tap(spot.x, spot.y);
+  await page.waitForTimeout(700);
+  const afterTap = await page.evaluate(() => ({ menu: !!document.querySelector('.overlay:not(.closed) .panel[data-key="menu"]'), food: (window.dpScene.food || []).length }));
+  ok('v5: сразу после броска корма тап по экрану открывает меню', afterTap.menu, JSON.stringify({ feedBtn: fb, food0, spot, ...afterTap }));
+  await page.evaluate(() => DP.ui.close()); await page.waitForTimeout(300);
   await page.evaluate(() => DP.ui.close()); await page.waitForTimeout(300);
   const live = await page.evaluate(() => window.__cvLive());
   ok('v3: память холстов в парке (живые) < 60 МБ', live < 60, live + ' МБ');

@@ -620,6 +620,17 @@ const watch = (page, tag) => {
     await gctx.close();
   }
 
+  // v5: телевизор (LG webOS, 1920×1080) — 3D в родном разрешении экрана, без растягивания; сглаживание и тон-маппинг включены
+  {
+    const tctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1, userAgent: 'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.79 Safari/537.36 WebAppManager' });
+    await tctx.addInitScript(() => { localStorage.setItem('dp_news_v3', '1'); });
+    const tp = await tctx.newPage(); watch(tp, 'tv1080');
+    await tp.goto(BASE + '/park.html?demo=1&rs=fix'); await tp.waitForFunction(() => window.dpScene && window.dpScene.renderer !== undefined, null, { timeout: 30000 }).catch(() => {}); await tp.waitForTimeout(2500);
+    const tv = await tp.evaluate(() => { const s = window.dpScene, P = DP.Scene.PERF; if (!s.is3d) return { is3d: false, tv: P.tv }; const g = s.gpuStats(); return { is3d: true, tv: P.tv, q: P.quality, size: [s.c.width, s.c.height], css: [s.VW, s.VH], dpr: s.dpr, aa: g.aa, tm: g.toneMapping, shadow: g.shadow }; });
+    ok('v5: ТВ 1920×1080 — 3D рисуется в родном разрешении (1920×1080), сглаживание и тон-маппинг', tv.tv && (!tv.is3d || (tv.size[0] === 1920 && tv.size[1] === 1080 && tv.aa === 'msaa' && tv.tm > 0)), JSON.stringify(tv));
+    await tctx.close();
+  }
+
   ok('Нет ошибок JS в консоли', errors.length === 0, errors.join(' | '));
   await browser.close();
   const failed = results.filter(r => !r.pass).length;
