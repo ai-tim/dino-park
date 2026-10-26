@@ -20,6 +20,9 @@
     .adm .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
     .adm .st { font-size: 14px; opacity: .9; margin: 6px 0; } .adm .warn { color: #ffd27a; } .adm .ok { color: #8ff0b5; } .adm .bad { color: #ff9a9a; }
     .adm .code { word-break: break-all; font-family: ui-monospace, monospace; font-size: 11px; background: rgba(0,0,0,.3); padding: 8px; border-radius: 8px; margin: 6px 0; }
+    .adm .hint { background: rgba(255,210,122,.12); border-radius: 10px; padding: 8px 10px; }
+    #adm-toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: #123d3a; color: #eafff5; border: 1px solid rgba(255,255,255,.25); padding: 10px 16px; border-radius: 12px; font-weight: 700; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50; max-width: 90vw; text-align: center; }
+    #adm-toast.on { opacity: 1; transform: translate(-50%, 0); }
   </style>
 </head>
 <body>
@@ -32,13 +35,15 @@
       <div class="st" id="key-st">…</div>
       <div class="btns">
         <button class="btn small" id="key-gen">Создать новый ключ</button>
-        <button class="btn small ghost" id="key-export">Экспорт (скачать)</button>
+        <button class="btn small ghost" id="key-export">Сохранить копию ключа (Поделиться)</button>
+        <button class="btn small ghost" id="key-copy">Скопировать закрытый ключ</button>
         <button class="btn small ghost" id="key-forget">Удалить из браузера</button>
       </div>
+      <div class="st hint" id="key-hint">🔒 Закрытый ключ <b>никому не отправляй</b>. Сохрани копию в «Файлы» или в Заметки (и закрепи) — без неё новые коды не сделать.</div>
       <label for="key-in">Импорт закрытого ключа (JWK)</label>
       <textarea id="key-in" placeholder='{"kty":"EC","crv":"P-256",...}' autocomplete="off" spellcheck="false"></textarea>
       <div class="btns"><button class="btn small" id="key-import">Импортировать</button></div>
-      <div class="st" id="key-pub-wrap" hidden>Открытый ключ для <b>js/config.js</b> → ADMIN_PUBLIC_KEY:<div class="code" id="key-pub"></div></div>
+      <div class="st" id="key-pub-wrap" hidden>Открытый ключ для <b>js/config.js</b> → ADMIN_PUBLIC_KEY:<div class="code" id="key-pub"></div><button class="btn small" id="key-pub-copy">📋 Скопировать открытый ключ</button></div>
     </section>
 
     <section>

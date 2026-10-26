@@ -7,7 +7,8 @@
     "test": "node e2e.js",
     "mobile": "node mobile.js",
     "tv": "node tv-relay.js",
-    "compat": "node compat.js"
+    "compat": "node compat.js",
+    "admin-key": "node admin-key.js"
   },
   "dependencies": {
     "playwright-core": "^1.48.0",

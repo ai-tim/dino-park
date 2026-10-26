@@ -10,5 +10,5 @@
  */
 window.DP_CONFIG = Object.assign({ wsUrl: null }, window.DP_CONFIG || {}, {
   SUPPORT_TELEGRAM_URL: "",
-  ADMIN_PUBLIC_KEY: {"kty":"EC","crv":"P-256","x":"pYvHVMfsKna9Np0iHtU6Q7ne0A8CSS16lI-_SgRx0Vo","y":"nWE9X0ae6xvD3H_dnbW9oAjNeYW7orrtEooPlI-GZS4"}
+  ADMIN_PUBLIC_KEY: {"kty":"EC","crv":"P-256","x":"ZIzvhUoPK1_XyYk2n3hJJYn7D-_PUQovLm2AOEBFlbs","y":"bcrkqVgl5cz7ycpMZSXbTkfGEQjvBw6Z7bgXPUy-8D8"}
 });

@@ -14,7 +14,7 @@
     const k = stored(), c = cfgPub(), st = $('#key-st');
     if (!k) { st.innerHTML = '<span class="warn">Ключа в этом браузере нет.</span> Импортируй сохранённый закрытый ключ или создай новый.'; $('#key-pub-wrap').hidden = true; return; }
     const match = c && c.x === k.x && c.y === k.y;
-    st.innerHTML = match ? '<span class="ok">✓ Ключ есть и совпадает с открытым ключом в config.js — коды будут приниматься.</span>'
+    st.innerHTML = match ? '<span class="ok">✅ Ключ совпадает с игрой — коды будут приниматься.</span>'
       : '<span class="bad">⚠ Ключ есть, но НЕ совпадает с config.js.</span> Вставь открытый ключ ниже в js/config.js и опубликуй сайт.';
     $('#key-pub-wrap').hidden = false; $('#key-pub').textContent = JSON.stringify(pubOf(k));
   }
@@ -36,10 +36,54 @@
       $('#key-in').value = ''; status();
     } catch (e) { alert('Не получилось: ' + e.message); }
   };
+  // ——— сохранение/копирование ключа (iPhone Safari не умеет a.download → «Поделиться» / буфер обмена) ———
+  function toast(msg, ms) {
+    let t = document.getElementById('adm-toast');
+    if (!t) { t = document.createElement('div'); t.id = 'adm-toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
+    t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms || 3000);
+  }
+  // Копирование синхронно внутри жеста: сначала clipboard API, при отказе — скрытая textarea + execCommand('copy').
+  function copyText(text, okMsg) {
+    const legacy = () => {
+      const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px';
+      document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+      let done = false; try { done = document.execCommand('copy'); } catch (e) { done = false; }
+      ta.remove(); return done;
+    };
+    const fail = () => { prompt('Скопируй вручную:', text); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => toast(okMsg), () => { if (legacy()) toast(okMsg); else fail(); });
+    } else if (legacy()) toast(okMsg); else fail();
+  }
   $('#key-export').onclick = () => {
     const k = stored(); if (!k) return alert('Ключа нет');
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(k)], { type: 'application/json' }));
-    a.download = 'dinopark-admin-key.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    const json = JSON.stringify(k), name = 'dinopark-admin-key.json';
+    let file = null; try { file = new File([json], name, { type: 'application/json' }); } catch (e) { file = null; }
+    // navigator.share вызывается синхронно, без await перед ним — иначе Safari потеряет жест пользователя.
+    if (file && navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: 'Ключ Динопарка' })
+        .then(() => toast('Сохранено — выбери «Сохранить в Файлы» или Заметки'))
+        .catch((e) => { if (!e || e.name !== 'AbortError') toast('Не получилось поделиться — скопируй ключ кнопкой ниже', 4000); });
+      return;
+    }
+    const a = document.createElement('a');
+    if ('download' in a && !/iP(hone|ad|od)/.test(navigator.userAgent)) {
+      a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' })); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } else {
+      const u = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      const w = window.open(u, '_blank'); setTimeout(() => URL.revokeObjectURL(u), 60000);
+      if (!w) copyText(json, 'Скопировано — вставь в Заметки и закрепи');
+    }
+  };
+  $('#key-copy').onclick = () => {
+    const k = stored(); if (!k) return alert('Ключа нет');
+    copyText(JSON.stringify(k), 'Скопировано — вставь в Заметки и закрепи');
+  };
+  $('#key-pub-copy').onclick = () => {
+    const k = stored(); if (!k) return alert('Ключа нет');
+    copyText(JSON.stringify(pubOf(k)), 'Открытый ключ скопирован — его можно отправить');
   };
   $('#key-forget').onclick = () => { if (confirm('Удалить ключ из этого браузера? Без резервной копии новые коды сделать не получится.')) { localStorage.removeItem(KEY); status(); } };
 

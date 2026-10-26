@@ -416,11 +416,16 @@ const watch = (page, tag) => {
   // 13. v3: яйца, обмен, племя, панель нужд, прятки, подарки, достижения, коды, приглашения, зум
   {
     const crypto = require('crypto');
-    const KEYFILE = process.env.ADMIN_KEY_FILE || '/workspace/secrets/dinopark-admin-key.txt';
-    let priv = null; // закрытый ключ читается только для подписи тестовых кодов и нигде не печатается
-    try { const line = fs.readFileSync(KEYFILE, 'utf8').split('\n').find(l => l.trim().startsWith('{')); priv = crypto.createPrivateKey({ key: JSON.parse(line), format: 'jwk' }); } catch (e) { priv = null; }
+    // Ключ подписи тестовых кодов: по умолчанию — свежая тестовая пара, открытая часть подменяется в js/config.js
+    // только внутри браузера теста (page.route). ADMIN_KEY_FILE=… — подписывать настоящим ключом (без подмены).
+    const KEYFILE = process.env.ADMIN_KEY_FILE || '';
+    let priv = null, privJwk = null; // закрытый ключ нигде не печатается и не сохраняется
+    if (KEYFILE) { try { privJwk = JSON.parse(fs.readFileSync(KEYFILE, 'utf8').split('\n').find(l => l.trim().startsWith('{'))); priv = crypto.createPrivateKey({ key: privJwk, format: 'jwk' }); } catch (e) { priv = null; } }
+    else { const kp = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' }); priv = kp.privateKey; privJwk = kp.privateKey.export({ format: 'jwk' }); }
+    const testPub = JSON.stringify({ kty: 'EC', crv: 'P-256', x: privJwk && privJwk.x, y: privJwk && privJwk.y });
     const makeCode = (payload, key) => { const b = Buffer.from(JSON.stringify(payload)).toString('base64url'); return `DP1.${b}.${crypto.sign('sha256', Buffer.from('DP1.' + b), { key: key || priv, dsaEncoding: 'ieee-p1363' }).toString('base64url')}`; };
     const vctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1 });
+    if (!KEYFILE) await vctx.route(/\/js\/config\.js(\?|$)/, async (route) => { const r = await route.fetch(); const body = (await r.text()).replace(/ADMIN_PUBLIC_KEY:\s*\{[^}]*\}/, 'ADMIN_PUBLIC_KEY: ' + testPub); await route.fulfill({ response: r, body }); });
     await vctx.addInitScript(() => { if (!sessionStorage.getItem('keepNews')) localStorage.setItem('dp_news_v3', '1'); });
     const vp = await vctx.newPage(); watch(vp, 'v3');
     await vp.goto(BASE + '/parks.html'); await vp.waitForTimeout(800);
@@ -537,8 +542,7 @@ const watch = (page, tag) => {
       // admin.html: импорт ключа, создание кода
       const ap = await vctx.newPage(); watch(ap, 'admin');
       await ap.goto(BASE + '/admin.html'); await ap.waitForTimeout(500);
-      const line = fs.readFileSync(KEYFILE, 'utf8').split('\n').find(l => l.trim().startsWith('{'));
-      await ap.fill('#key-in', line); await ap.click('#key-import'); await ap.waitForTimeout(300);
+      await ap.fill('#key-in', JSON.stringify({ kty: privJwk.kty, crv: privJwk.crv, x: privJwk.x, y: privJwk.y, d: privJwk.d })); await ap.click('#key-import'); await ap.waitForTimeout(300);
       const ast = await ap.textContent('#key-st');
       await ap.selectOption('#g-kind', 'item'); await ap.fill('#g-msg', 'Из админки'); await ap.click('#g-make'); await ap.waitForTimeout(500);
       const alink = await ap.getAttribute('#g-out a', 'href');
