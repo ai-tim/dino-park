@@ -64,6 +64,7 @@
     Y.on('event', handleEvent);
     Y.on('status', () => { if (UI.isOpen() && current === 'menu') screens.menu(); });
     Y.on('deleted', (id) => { if (id !== park.id) return; S.remove(park.id); U.toast('🗑️ Этот парк удалили', 4000); setTimeout(() => location.replace('parks.html'), 1500); });
+    Y.on('tvs', (n) => { if (n && UI.isOpen() && current === 'tv') { U.toast('📺 Телевизор подключён!', 3500); screens.tv(); } });
     Y.on('error', (m) => { U.toast('⚠️ ' + (m && m.error || 'Ошибка сервера'), 5000); });
   }
 
@@ -304,9 +305,12 @@
       const info = await Y.tvCode(park);
       if (current !== 'tv') return;
       const url = baseUrl() + 'tv.html?code=' + info.code;
+      const ti = Y.tvInfo ? Y.tvInfo() : { paired: 0, online: 0, relays: [] };
       const warn = location.protocol === 'file:' ? '<div class="note" style="margin-top:12px">⚠️ Страница открыта как файл — QR-код сработает, только если сайт запущен через сервер (см. README).</div>'
-        : !info.server ? '<div class="note" style="margin-top:12px">💾 Локальный режим: код работает в другой вкладке/окне этого же браузера. Чтобы открыть парк на телевизоре или другом устройстве, запустите Node-сервер (<code>cd server && npm install && npm start</code>).</div>'
-        : '<div class="note" style="margin-top:12px">🟢 Телевизор и этот телефон будут синхронизированы через сервер — всё, что вы делаете здесь, сразу появится на экране.</div>';
+        : info.server ? '<div class="note" style="margin-top:12px">🟢 Телевизор и этот телефон будут синхронизированы через сервер — всё, что вы делаете здесь, сразу появится на экране.</div>'
+        : info.relay ? `<div class="note tv-relay" id="tv-relay" style="margin-top:12px">🔐 Связь через интернет без регистрации, данные зашифрованы. Не закрывайте парк на телефоне, пока смотрите на ТВ.<br><span id="tv-st">${tvStatus(ti)}</span></div>
+            ${ti.paired ? '<div class="btn-row"><button class="btn danger" id="tv-off">📴 Отключить телевизоры (' + ti.paired + ')</button></div>' : ''}`
+        : '<div class="note" style="margin-top:12px">💾 Этот браузер не поддерживает защищённую связь — код сработает только в другой вкладке этого же браузера.</div>';
       UI.show(`${UI.head('Открыть на другом экране', { back: true, sub: 'На ТВ или смарт-ТВ, телефоне, ПК или планшете' })}
         <div class="tv-split">
           <div class="tv-box"><h3><span class="num">1</span>Отсканируйте QR-код для телевизора</h3><div class="qr">${qr(url)}</div><div class="url">${U.esc(url)}</div></div>
@@ -319,12 +323,13 @@
         </div>${warn}`, (p) => {
         UI.wire(p, { back: () => go('menu') });
         p.querySelector('#tv-open').onclick = () => window.open(url, '_blank');
+        const off = p.querySelector('#tv-off'); if (off) off.onclick = async () => { await Y.tvDisconnect(); U.toast('📴 Телевизоры отключены', 3000); screens.tv(); };
         const tick = () => {
           const left = Math.max(0, info.exp - Date.now());
           const el = p.querySelector('#tv-timer'); if (el) el.textContent = `⏳ Осталось ${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`;
           if (left <= 0 && current === 'tv') { clearInterval(tvTimer); screens.tv(); }
         };
-        tick(); clearInterval(tvTimer); tvTimer = setInterval(tick, 1000);
+        tick(); clearInterval(tvTimer); tvTimer = setInterval(() => { tick(); const st = p.querySelector('#tv-st'); if (st && Y.tvInfo) { const h = tvStatus(Y.tvInfo()); if (st.innerHTML !== h) st.innerHTML = h; } }, 1000);
       }, { wide: true });
     },
     /** Как добавить динозавра: камера здесь, файл или телефон по QR */
@@ -801,6 +806,10 @@
     };
   }
 
+  function tvStatus(ti) {
+    const r = ti.relays && ti.relays.length ? '<span class="status-dot on"></span>Ретранслятор: ' + U.esc(ti.relays.join(', ')) : '<span class="status-dot"></span>Подключаемся к ретранслятору…';
+    return r + (ti.paired ? ` · 📺 сопряжено: ${ti.paired}, на связи: ${ti.online}` : '');
+  }
   function baseUrl() { return location.href.replace(/[^/]*([?#].*)?$/, ''); }
   function qr(text) { try { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); } catch (e) { return '<p style="color:#000">QR недоступен</p>'; } }
 

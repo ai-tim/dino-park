@@ -10,32 +10,46 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
   <link rel="stylesheet" href="css/style.css">
   <style>
-    body { background: radial-gradient(circle at 50% 30%, #0f3a3f, #04121a 70%); }
-    .tv-join { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 5; }
-    .tv-join .panel { width: min(520px, 100%); text-align: center; padding: 30px 26px; }
-    .tv-join h1 { margin: 0 0 6px; font-size: 30px; font-weight: 900; }
-    .tv-join .field { text-align: center; font-size: 34px; letter-spacing: 10px; min-height: 72px; margin-top: 18px; }
-    .tv-bar { position: fixed; top: 14px; right: 14px; z-index: 6; display: flex; gap: 8px; transition: opacity .5s; }
+    /* без inset/gap — старые браузеры телевизоров (Chromium 68–86) */
+    body { background: #04121a; background: radial-gradient(circle at 50% 30%, #0f3a3f, #04121a 70%); }
+    .tv-join { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 5; overflow: auto; }
+    .tv-join .panel { width: 640px; max-width: 100%; text-align: center; padding: 28px 30px; }
+    .tv-join h1 { margin: 0 0 6px; font-size: 34px; font-weight: 900; }
+    .tv-join .note { font-size: 19px; }
+    .tv-join .field { text-align: center; font-size: 46px; letter-spacing: 14px; min-height: 84px; margin-top: 16px; width: 100%; box-sizing: border-box; }
+    .tv-join .btn { font-size: 24px; min-height: 64px; }
+    .tv-join .btn + .btn { margin-left: 12px; }
+    .kp { display: flex; flex-wrap: wrap; justify-content: center; margin: 14px auto 4px; max-width: 420px; }
+    .kp button { width: 30%; margin: 1.5%; height: 64px; font-size: 30px; font-weight: 900; border-radius: 16px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.08); color: #fff; font-family: inherit; cursor: pointer; }
+    .kp button:focus, .tv-join .btn:focus, .tv-join .field:focus { outline: 4px solid #ffd43b; outline-offset: 2px; }
+    .kp button.ok { background: linear-gradient(180deg, #4be895, #1fae66); color: #04311b; }
+    .tv-err { color: #ffb3b3; min-height: 26px; font-size: 20px !important; font-weight: 800; }
+    .tv-bar { position: fixed; top: 14px; right: 14px; z-index: 6; display: flex; transition: opacity .5s; }
+    .tv-bar .btn { margin-left: 8px; font-size: 18px; }
     .tv-bar.fade { opacity: 0; pointer-events: none; }
-    .tv-name { position: fixed; left: 16px; bottom: 14px; z-index: 6; padding: 8px 14px; font-weight: 800; transition: opacity .5s; }
+    .tv-name { position: fixed; left: 16px; bottom: 14px; z-index: 6; padding: 10px 16px; font-weight: 800; font-size: 20px; transition: opacity .5s; }
     .tv-name.fade { opacity: 0; }
+    .tv-link { position: fixed; right: 16px; bottom: 14px; z-index: 6; padding: 8px 14px; font-weight: 800; font-size: 16px; }
+    .tv-link.hidden { display: none; }
   </style>
 </head>
-<body>
+<body class="tv-page">
   <canvas id="park" class="park-canvas hidden" style="cursor:default"></canvas>
   <div class="tv-join" id="join">
     <div class="panel glass">
-      <div style="font-size:54px">📺</div>
+      <div style="font-size:56px">📺</div>
       <h1>Открыть парк на телевизоре</h1>
-      <p class="note">Введите пятизначный код из меню «Открыть на другом экране» на телефоне</p>
-      <input class="field" id="code" maxlength="5" inputmode="numeric" pattern="[0-9]*" placeholder="например, 59206" autocomplete="off" autofocus>
-      <div class="btn-row"><button class="btn green" id="go">Открыть</button></div>
-      <p class="note" id="err" style="color:#ffb3b3;min-height:20px"></p>
+      <p class="note">На телефоне в парке нажмите <b>☰ → 📺 ТВ</b> и введите здесь код из пяти цифр. Регистрация не нужна.</p>
+      <input class="field" id="code" maxlength="5" inputmode="numeric" pattern="[0-9]*" placeholder="• • • • •" autocomplete="off" autofocus>
+      <div class="kp" id="kp"></div>
+      <div class="btn-row" style="justify-content:center"><button class="btn green" id="go">Открыть</button></div>
+      <p class="note tv-err" id="err"></p>
       <p class="note" id="mode"></p>
     </div>
   </div>
-  <div class="tv-bar hidden" id="bar"><button class="btn" id="fs">⛶ Во весь экран</button><button class="btn" id="exit">✕ Выйти</button></div>
+  <div class="tv-bar hidden" id="bar"><button class="btn" id="fs">⛶ Во весь экран</button><button class="btn" id="exit">✕ Отключить</button></div>
   <div class="tv-name glass hidden" id="tvname"></div>
+  <div class="tv-link glass hidden" id="tvlink"></div>
   <div class="tv-toast glass" id="tvtoast"></div>
 
   <script src="js/util.js"></script>
@@ -54,6 +68,7 @@
   <script src="js/things3d.js"></script>
   <script src="js/scene3d.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/relay.js"></script>
   <script src="js/sync.js"></script>
   <script src="js/tv.js"></script>
 </body>

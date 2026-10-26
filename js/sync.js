@@ -1,13 +1,24 @@
 /* Динопарк — синхронизация.
  * Режим "server": WebSocket к Node-серверу (server/server.js) по адресу /ws — работает между устройствами.
  * Режим "local": localStorage + BroadcastChannel — между вкладками/окнами одного браузера.
+ * Режим "relay" (поверх локального): телефон ↔ ТВ через публичные MQTT-брокеры со сквозным шифрованием (js/relay.js) —
+ *   работает на статическом сайте (GitHub Pages) без сервера и без регистрации.
  * Клиент сам пробует сервер и при его отсутствии переключается на локальный режим.
  */
 window.DP = window.DP || {};
 (function () {
   const S = () => DP.store;
-  let ws = null, mode = 'local', rid = 0, sub = null, connecting = null;
-  const pending = {}, handlers = { park: [], event: [], status: [], error: [], deleted: [] };
+  let ws = null, mode = 'local', rid = 0, sub = null, connecting = null, host = null, viewer = null;
+  const R = () => (DP.relay && DP.relay.supported() ? DP.relay : null);
+  function useViewer() {
+    if (viewer) return viewer;
+    viewer = R().viewer();
+    viewer.on('park', (p) => { if (sub && sub.relay && p && p.id === sub.id) emit('park', p); });
+    viewer.on('event', (ev) => { if (sub && sub.relay) emit('event', ev); });
+    viewer.on('deleted', (id) => { if (sub && sub.relay) emit('deleted', id || sub.id); });
+    return viewer;
+  }
+  const pending = {}, handlers = { park: [], event: [], status: [], error: [], deleted: [], tvs: [] };
   const bc = ('BroadcastChannel' in window) ? new BroadcastChannel('dinopark') : null;
 
   function emit(t, d) { (handlers[t] || []).forEach(fn => { try { fn(d); } catch (e) { console.error(e); } }); }
@@ -95,21 +106,32 @@ window.DP = window.DP || {};
     subscribe(park) {
       sub = { id: park.id, pin: park.pin };
       if (mode === 'server') send({ t: 'sub', id: park.id, pin: park.pin, park });
+      else if (R()) { // без сервера: телефон сам раздаёт парк сопряжённым телевизорам
+        host = R().host(park.id); host.push(park);
+        if (!host._wired) { host._wired = 1; host.on('tvs', (n) => emit('tvs', n)); host.on('paired', () => emit('tvs', host.sessions.length)); }
+      }
     },
+    /** Телефон: сколько телевизоров сопряжено / на связи, через какие ретрансляторы */
+    tvInfo() { return host ? { paired: host.sessions.length, online: host.tvsOnline(), relays: DP.relay.hub.online() } : { paired: 0, online: 0, relays: [] }; },
+    tvDisconnect() { return host ? host.disconnectAll() : Promise.resolve(); },
+    get viewer() { return viewer; },
     pushPark(park) {
       S().save(park);
       if (bc) bc.postMessage({ t: 'park', id: park.id, park });
       if (mode === 'server') send({ t: 'update', id: park.id, pin: park.pin, park });
+      else if (host && host.parkId === park.id) host.push(park);
     },
     /** Произвольный запрос к серверу (приглашения, подарочные коды, обратная связь). В локальном режиме — ошибка. */
     call(m, timeout) { if (mode !== 'server') return Promise.reject(new Error('Нет сервера')); return request(m, timeout); },
     sendEvent(park, ev) {
       if (bc) bc.postMessage({ t: 'event', id: park.id, ev });
       if (mode === 'server') send({ t: 'event', id: park.id, pin: park.pin, ev });
+      else if (host && host.parkId === park.id) host.event(ev);
     },
     async deletePark(park) {
       if (mode === 'server') await request({ t: 'delete', id: park.id, pin: park.pin });
       if (bc) bc.postMessage({ t: 'deleted', id: park.id });
+      if (host && host.parkId === park.id) await host.disconnectAll().catch(() => {});
     },
     /** Сменить пароль (нужен текущий) */
     async setPin(park, oldPin, newPin) {
@@ -123,7 +145,10 @@ window.DP = window.DP || {};
     async tvCode(park) {
       if (mode === 'server') { try { const r = await request({ t: 'tvcode', id: park.id, pin: park.pin }); return { code: r.code, exp: r.exp, server: true }; } catch (e) { console.warn(e); } }
       const code = DP.util.code5(), exp = Date.now() + 5 * 60 * 1000;
-      S().setTvCode(code, park.id, exp); return { code, exp, server: false };
+      S().setTvCode(code, park.id, exp); // тот же браузер (другая вкладка) — сразу
+      let relay = false;
+      if (R()) { if (!host || host.parkId !== park.id) API.subscribe(park); host.push(park); relay = await host.startCode(code, exp).catch(() => false); }
+      return { code, exp, server: false, relay };
     },
     /** ТВ: войти по 5-значному коду, получить парк и подписаться только на чтение */
     async tvJoin(code) {
@@ -133,12 +158,17 @@ window.DP = window.DP || {};
         catch (e) { if (!/не найден|истёк/i.test(e.message)) throw e; /* пробуем локально */ var serr = e; }
       }
       const all = S().tvCodes(), rec = all[code];
-      if (!rec || rec.exp < Date.now()) throw (serr || new Error('Код не найден или истёк. Получите новый код в меню «Открыть на другом экране».'));
-      const p = S().get(rec.id); if (!p) throw new Error('Парк не найден');
-      sub = { id: p.id, tv: true }; API.tvToken = null; return p;
+      const lp = rec && rec.exp >= Date.now() ? S().get(rec.id) : null;
+      if (lp) { sub = { id: lp.id, tv: true }; API.tvToken = null; return lp; } // тот же браузер
+      if (!R()) throw (serr || new Error('Код не найден или истёк. Получите новый код в меню «📺 ТВ».'));
+      // другое устройство: сопряжение через интернет-ретранслятор
+      const v = useViewer(); sub = { id: null, tv: true, relay: true };
+      const p = await v.join(code, /Web0S|webOS|SmartTV|Tizen/i.test(navigator.userAgent) ? 'Телевизор' : 'Экран');
+      sub.id = p.id; API.tvToken = null; API.tvRelay = true; return p;
     },
     /** ТВ: после перезагрузки страницы — следить за парком по id (без PIN) */
-    tvWatch(id, token) {
+    tvWatch(id, token, relay) {
+      if (relay && R()) { const saved = R().savedTv(); if (!saved || !saved.park) return Promise.resolve(null); sub = { id: saved.park.id, tv: true, relay: true }; API.tvRelay = true; return useViewer().attach(saved.s, saved.park); }
       sub = { id, tv: true, token };
       if (mode === 'server' && token) return request({ t: 'tvwatch', id, token }).then(r => r.park).catch(() => S().get(id));
       return Promise.resolve(S().get(id));
