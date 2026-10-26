@@ -18,7 +18,7 @@ window.DP = window.DP || {};
     makeCtx() { this._aux = document.createElement('canvas'); this._aux.width = this._aux.height = 4; return this._aux.getContext('2d'); }
     pickDpr(w, h) {
       const cap = Math.min(window.devicePixelRatio || 1, this.opts.maxDpr || 2);
-      const budget = PERF.mobile ? (navigator.deviceMemory && navigator.deviceMemory <= 2 ? 0.7e6 : 1.0e6) : 3.0e6;
+      const budget = PERF.mobile ? (navigator.deviceMemory && navigator.deviceMemory <= 2 ? 0.7e6 : 1.0e6) : PERF.tv ? 1.6e6 : 3.0e6;
       return Math.max(0.75, Math.min(cap, Math.sqrt(budget / Math.max(1, w * h))));
     }
     // ——— WebGL: создаём лениво (базовый конструктор вызывает resize раньше, чем дойдёт до нашего кода) ———
@@ -27,7 +27,7 @@ window.DP = window.DP || {};
       if (this._failed) return false;
       const THREE = T();
       try {
-        this.renderer = new THREE.WebGLRenderer({ canvas: this.c, antialias: !PERF.mobile, alpha: false, stencil: false, powerPreference: PERF.mobile ? 'low-power' : 'default' });
+        this.renderer = new THREE.WebGLRenderer({ canvas: this.c, antialias: !PERF.mobile && !PERF.tv, alpha: false, stencil: false, powerPreference: PERF.mobile ? 'low-power' : 'default' });
       } catch (err) { this._failed = true; return false; }
       this.scene3 = new THREE.Scene(); this.camera = new THREE.PerspectiveCamera(50, 1, 0.5, 1000);
       this.dyn = new THREE.Group(); this.scene3.add(this.dyn);
@@ -453,7 +453,7 @@ window.DP = window.DP || {};
         ms.forEach(m => ['map', 'normalMap', 'emissiveMap'].forEach(k => { const tx = m[k]; if (tx && !texs.has(tx)) { texs.add(tx); const im = tx.image; const w = (im && (im.width || im.naturalWidth)) || (tx.userData.w || 0), h = (im && (im.height || im.naturalHeight)) || (tx.userData.h || 0); texBytes += (w || 512) * (h || 512) * 4 * (tx.generateMipmaps !== false ? 1.33 : 1); } }));
       });
       const d3 = DP.Dino3D.stats(); texBytes = Math.max(texBytes, 0) + 0; // атласы динозавров уже учтены через материалы
-      const aa = !PERF.mobile ? 4 : 1, buf = this.c.width * this.c.height * (4 * 2 + 4 + (aa > 1 ? 4 * aa + 4 * aa : 0));
+      const aa = !PERF.mobile && !PERF.tv ? 4 : 1, buf = this.c.width * this.c.height * (4 * 2 + 4 + (aa > 1 ? 4 * aa + 4 * aa : 0));
       const ovB = this.ov ? this.ov.width * this.ov.height * 4 : 0;
       const total = geoBytes + texBytes + buf + ovB;
       return { textures: info.memory.textures, geometries: info.memory.geometries, calls: info.render.calls, triangles: info.render.triangles, texMB: +(texBytes / 1048576).toFixed(2), geoMB: +(geoBytes / 1048576).toFixed(2), bufferMB: +(buf / 1048576).toFixed(2), overlayMB: +(ovB / 1048576).toFixed(2), totalMB: +(total / 1048576).toFixed(2), dino: d3, dpr: this.dpr, size: [this.c.width, this.c.height] };

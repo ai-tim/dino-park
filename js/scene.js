@@ -1056,7 +1056,12 @@ window.DP = window.DP || {};
     const mobile = mm('(pointer: coarse)') || sw <= 820 || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
     const reduce = mm('(prefers-reduced-motion: reduce)');
     const lowMem = navigator.deviceMemory && navigator.deviceMemory <= 2;
-    return { mobile, reduce, maxDpr: mobile ? 2 : 2, maxPixels: mobile ? (lowMem ? 0.9e6 : 1.4e6) : 4.5e6, maxFps: reduce || lowMem ? 30 : 0 };
+    // телевизоры (LG webOS, Tizen…): большой экран, но слабая видеокарта — средняя детализация, 30 кадров/с
+    const tv = /Web0S|webOS|SmartTV|SMART-TV|Tizen|NetCast|BRAVIA|HbbTV/i.test(navigator.userAgent || '');
+    // уровень детализации 3D: low — телефоны, mid — телевизоры и слабые ПК, high — компьютеры; ?q=low|mid|high — вручную
+    const qp = /[?&]q=(low|mid|high)\b/.exec(location.search || '');
+    const quality = qp ? qp[1] : mobile || lowMem ? 'low' : tv || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) ? 'mid' : 'high';
+    return { mobile, tv, quality, reduce, maxDpr: tv ? 1 : 2, maxPixels: mobile ? (lowMem ? 0.9e6 : 1.4e6) : tv ? 2.1e6 : 4.5e6, maxFps: reduce || lowMem || tv ? 30 : 0 };
   })();
   Scene.all = [];
   // шапки (эмодзи) и где они сидят на голове у каждого вида: [доля ширины, доля высоты, размер]

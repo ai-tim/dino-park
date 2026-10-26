@@ -63,6 +63,7 @@ window.DP = window.DP || {};
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
   }
+  function hashN(x, z) { const s = Math.sin(x * 41.3 + z * 17.7) * 9631.7; return s - Math.floor(s); }
   function blade(h, w, lean) {
     const THREE = T(), g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute([-w, 0, 0, w, 0, 0, lean, h, 0], 3)); g.computeVertexNormals(); return g;
@@ -103,11 +104,30 @@ window.DP = window.DP || {};
   DP.G3 = { rng, noise2, fbm, C, paint, place, jitter, merge, cyl, cone, blob, frond, blade, radialTex, canvasTex, windMat, TIME, freeTextures };
 
   // ——— растения и камни (единичный размер; масштаб задаёт экземпляр) ———
+  const QL = () => (DP.Scene && DP.Scene.PERF && DP.Scene.PERF.quality) || 'high';
+  const HI = () => QL() === 'high', LO = () => QL() === 'low';
+  /** Изогнутая травинка из нескольких звеньев (сужается к кончику) */
+  function blade2(h, w, lean, segs) {
+    const THREE = T(), pos = [], n = segs || 3;
+    for (let i = 0; i < n; i++) {
+      const a = i / n, b = (i + 1) / n, xa = lean * a * a, xb = lean * b * b, wa = w * (1 - a), wb = w * (1 - b);
+      pos.push(-wa + xa, h * a, 0, wa + xa, h * a, 0, -wb + xb, h * b, 0, wa + xa, h * a, 0, wb + xb, h * b, 0, -wb + xb, h * b, 0);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+  }
   const KIT = {
     tree(L, r) { // лиственное дерево: ствол и пышная крона из «комков»
       const parts = [paint(jitter(cyl(0.16, 0.3, 2.3, 6), 0.08, 1), L.bark)];
       [[0, 2.7, 0, 1.25], [0.75, 2.35, 0.25, 0.9], [-0.7, 2.4, -0.2, 0.95], [0.15, 3.3, -0.15, 0.85], [-0.2, 2.5, 0.7, 0.8]].forEach(([x, y, z, s], i) => {
-        parts.push(paint(jitter(place(blob(s, 1), x, y, z), 0.22, i + 2), (px, py, pz, nx, ny) => C(L.leaf[Math.min(L.leaf.length - 1, (ny > 0.35 ? 2 : ny > -0.2 ? 1 : 0) + (i % 2))])));
+        parts.push(paint(jitter(place(blob(s, HI() ? 2 : 1), x, y, z), HI() ? 0.16 : 0.22, i + 2), (px, py, pz, nx, ny) => C(L.leaf[Math.min(L.leaf.length - 1, (ny > 0.35 ? 2 : ny > -0.2 ? 1 : 0) + (i % 2))])));
+      });
+      return merge(parts);
+    },
+    tree2(L, r) { // высокое дерево с ярусами зонтичной кроны (как гинкго/акация) и корнями-подпорками
+      const parts = [paint(jitter(cyl(0.12, 0.24, 3.2, 7), 0.05, 3), L.barkD || L.bark)];
+      for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + 0.4, g = cyl(0.03, 0.07, 0.75, 4); place(g, Math.cos(a) * 0.18, 0, Math.sin(a) * 0.18, Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); parts.push(paint(g, L.bark)); }
+      [[0, 3.3, 0, 1.6, 0.42], [0.35, 2.55, 0.2, 1.15, 0.36], [-0.3, 2.8, -0.25, 1.05, 0.34], [0.1, 3.85, 0, 0.95, 0.38]].forEach(([x, y, z, s, fl], i) => {
+        parts.push(paint(jitter(place(blob(s, HI() ? 2 : 1), x, y, z, 0, i, 0, 1, fl, 1), 0.12, i + 7), (px, py, pz, nx, ny) => C(L.leaf[Math.min(L.leaf.length - 1, ny > 0.5 ? 3 : ny > 0 ? 2 : 1)])));
       });
       return merge(parts);
     },
@@ -125,8 +145,8 @@ window.DP = window.DP || {};
     },
     conifer(L, r, snow) {
       const parts = [paint(cyl(0.09, 0.13, 0.7, 5), L.bark)];
-      [[0.45, 1.0, 1.35], [1.1, 0.78, 1.15], [1.75, 0.55, 0.95]].forEach(([y, rr, h], i) => {
-        const g = jitter(place(cone(rr, h, 7), 0, y, 0), 0.05, i);
+      (HI() ? [[0.4, 1.05, 1.2], [0.95, 0.86, 1.05], [1.45, 0.66, 0.95], [1.95, 0.45, 0.8]] : [[0.45, 1.0, 1.35], [1.1, 0.78, 1.15], [1.75, 0.55, 0.95]]).forEach(([y, rr, h], i) => {
+        const g = jitter(place(cone(rr, h, HI() ? 10 : 7), 0, y, 0), 0.05, i);
         parts.push(paint(g, (px, py) => C(snow && py > y + h * (0.55 - i * 0.08) ? snow : L.leaf[Math.min(L.leaf.length - 1, i)])));
       });
       return merge(parts);
@@ -142,17 +162,39 @@ window.DP = window.DP || {};
     fern(L, r) { const parts = []; for (let i = 0; i < 8; i++) { const g = frond(0.9 + r() * 0.3, 0.16, 0.7, 5, 0.9); place(g, 0, 0.02, 0, 0, i / 8 * TAU + r() * 0.3, 0); parts.push(paint(g, (px, py) => C(L.leaf[py > 0.35 ? 3 % L.leaf.length : py > 0.15 ? 2 : 1]))); } return merge(parts); },
     grass(cols, r) {
       const parts = [];
-      for (let i = 0; i < 6; i++) { const g = blade(0.45 + r() * 0.35, 0.035, (r() - 0.5) * 0.2); place(g, (r() - 0.5) * 0.25, 0, (r() - 0.5) * 0.2, (r() - 0.5) * 0.5, r() * Math.PI, 0); parts.push(paint(g, (px, py) => C(py > 0.3 ? cols[2] : py > 0.12 ? cols[1] : cols[0]))); }
+      const nb = LO() ? 7 : HI() ? 10 : 8;
+      for (let i = 0; i < nb; i++) { const h = 0.45 + r() * 0.35, g = blade2(h, 0.035, (r() - 0.5) * 0.35, HI() ? 3 : 2); place(g, (r() - 0.5) * 0.3, 0, (r() - 0.5) * 0.24, (r() - 0.5) * 0.5, r() * Math.PI, 0); parts.push(paint(g, (px, py) => C(py > 0.3 ? cols[2] : py > 0.12 ? cols[1] : cols[0]))); }
       return merge(parts);
     },
     flowers(L, r, cols) {
       const parts = [];
-      for (let i = 0; i < 5; i++) { const x = (r() - 0.5) * 0.7, z = (r() - 0.5) * 0.5, h = 0.25 + r() * 0.2; parts.push(paint(place(cyl(0.012, 0.015, h, 3), x, 0, z), '#3f7a30')); parts.push(paint(place(blob(0.07, 0), x, h, z), cols[i % cols.length])); parts.push(paint(place(blob(0.03, 0), x, h + 0.04, z + 0.03), '#ffe066')); }
+      for (let i = 0; i < 5; i++) {
+        const x = (r() - 0.5) * 0.7, z = (r() - 0.5) * 0.5, h = 0.25 + r() * 0.2, col = cols[i % cols.length];
+        parts.push(paint(place(cyl(0.012, 0.015, h, 3), x, 0, z), '#3f7a30'));
+        if (LO()) parts.push(paint(place(blob(0.07, 0), x, h, z), col));
+        else { // пять лепестков и листик на стебле
+          for (let k = 0; k < 5; k++) { const a = k / 5 * TAU; parts.push(paint(place(blob(0.045, 0), x + Math.cos(a) * 0.05, h + 0.01, z + Math.sin(a) * 0.05, 0, a, 0.25, 1, 0.35, 0.7), col)); }
+          parts.push(paint(place(frond(0.12, 0.035, 0.3, 3, 0.4), x, h * 0.45, z, 0, r() * TAU, 0), '#4f8a3a'));
+        }
+        parts.push(paint(place(blob(0.03, 0), x, h + 0.035, z), '#ffe066'));
+      }
       return merge(parts);
     },
-    rock(cols, r, ice) {
-      const g = jitter(place(blob(1, 1), 0, 0.35, 0, 0, r() * TAU, 0, 1, 0.62, 0.85), 0.3, Math.floor(r() * 99));
-      return merge([paint(g, (px, py, pz, nx, ny) => C(ice && ny > 0.6 ? '#f6fbff' : cols[Math.min(cols.length - 1, ny > 0.55 ? 2 : ny > 0 ? 1 : 0)]))]);
+    rock(cols, r, ice, moss) {
+      const g = jitter(place(blob(1, HI() ? 2 : 1), 0, 0.35, 0, 0, r() * TAU, 0, 1, 0.62, 0.85), HI() ? 0.26 : 0.3, Math.floor(r() * 99));
+      const parts = [paint(g, (px, py, pz, nx, ny) => { const c = C(ice && ny > 0.6 ? '#f6fbff' : moss && ny > 0.7 && hashN(px, pz) > 0.35 ? moss : cols[Math.min(cols.length - 1, ny > 0.55 ? 2 : ny > 0 ? 1 : 0)]); return c; })];
+      if (!LO()) for (let i = 0; i < 4; i++) { const a = r() * TAU; parts.push(paint(jitter(place(blob(0.16 + r() * 0.1, 1), Math.cos(a) * 1.05, 0.05, Math.sin(a) * 0.8, 0, r() * 3, 0, 1, 0.55, 1), 0.05, i), cols[i % cols.length])); }
+      return merge(parts);
+    },
+    slab(cols, r) { // плоская плита — вторая форма камня
+      const g = jitter(place(new (T().CylinderGeometry)(1, 1.1, 0.35, HI() ? 9 : 7, 1), 0, 0.12, 0, 0.08, r() * TAU, 0.05, 1.3, 1, 0.8), 0.12, 5);
+      return merge([paint(g, (px, py, pz, nx, ny) => C(cols[ny > 0.6 ? 2 : 1]))]);
+    },
+    lily(r) { // кувшинки: плоские листья с вырезом и пара цветков
+      const THREE = T(), parts = [];
+      for (let i = 0; i < 4; i++) { const g = new THREE.CircleGeometry(0.32 + r() * 0.12, 12, 0.35, TAU - 0.35); g.rotateX(-Math.PI / 2); place(g, (r() - 0.5) * 1.6, 0.01 * i, (r() - 0.5) * 1.0, 0, r() * TAU, 0); parts.push(paint(g, ['#3f7a3a', '#4f8a40', '#5f9a48'][i % 3])); }
+      for (let i = 0; i < 2; i++) { const x = (r() - 0.5) * 1.2, z = (r() - 0.5) * 0.8; for (let k = 0; k < 6; k++) { const a = k / 6 * TAU; parts.push(paint(place(blob(0.07, 0), x + Math.cos(a) * 0.06, 0.06, z + Math.sin(a) * 0.06, 0, a, 0.5, 1, 0.5, 0.6), i ? '#ffffff' : '#ffb3d1')); } parts.push(paint(place(blob(0.04, 0), x, 0.09, z), '#ffe066')); }
+      return merge(parts);
     },
     cactus(r) {
       const col = '#4f7a3a', parts = [paint(cyl(0.16, 0.18, 1.4, 8), col), paint(place(blob(0.16, 1), 0, 1.4, 0, 0, 0, 0, 1, 0.7, 1), col)];
@@ -169,10 +211,10 @@ window.DP = window.DP || {};
   const LOC = {
     jungle: { sky: ['#3f8fcc', '#a9d6e8', '#f2ead0'], fog: '#cfe2e2', hemi: ['#e8f4ff', '#5a7040'], sun: '#fff1d0', sunAt: [0.55, 0.32], ground: ['#7da65a', '#5f8f43', '#4a7a35', '#9cc06a', '#b7a56a'], far: '#7da67a', bed: '#3f6e60', shore: '#8a7a55',
       water: ['#5f9db0', '#2f6f86'], mount: { col: '#8fa8bc', lit: '#c9d9e0', snow: null }, L: { bark: '#5d4430', barkD: '#3f2d1f', leaf: ['#2b5534', '#3a6f40', '#52884e', '#86b067'] }, rock: ['#6f6a62', '#8d877c', '#b3ab9c'],
-      trees: [['tree', 3], ['palm', 2], ['treefern', 2]], grass: ['#3f6e30', '#5f8f43', '#8db55c'], flowers: ['#ff6b9a', '#ffd43b', '#ffffff'], volcano: true, pollen: '#fff7c8' },
+      trees: [['tree', 2], ['tree2', 2], ['palm', 2], ['treefern', 2]], moss: '#5f8a3a', lily: true, butterflies: ['#ffd43b', '#ff8fb1', '#7fd0ff'], grass: ['#3f6e30', '#5f8f43', '#8db55c'], flowers: ['#ff6b9a', '#ffd43b', '#ffffff'], volcano: true, pollen: '#fff7c8' },
     lagoon: { sky: ['#3a8fd0', '#9fd0ea', '#fbe8c8'], fog: '#d8ecf2', hemi: ['#f0f8ff', '#a08a60'], sun: '#fff4d8', sunAt: [-0.5, 0.3], ground: ['#e6d3a3', '#d6be86', '#c9ad78', '#f2e2bb', '#b99c66'], far: '#b9c8a8', bed: '#5fb0b8', shore: '#e6d3a3',
       water: ['#7fc8d4', '#2f8da5'], mount: { col: '#8aa4bf', lit: '#c4d4e2', snow: null }, L: { bark: '#8a6a48', barkD: '#6a4e34', leaf: ['#2e5a32', '#3f7a3c', '#5c9a4a', '#8ebf62'] }, rock: ['#8a7f70', '#a89c88', '#c8bca4'],
-      trees: [['palm', 4], ['tree', 1]], grass: ['#7a8a48', '#8a9a54', '#a8b066'], flowers: ['#ffffff', '#ffd43b'], islands: true, foam: true },
+      trees: [['palm', 4], ['tree', 1], ['tree2', 1]], butterflies: ['#ffffff', '#ffd43b'], grass: ['#7a8a48', '#8a9a54', '#a8b066'], flowers: ['#ffffff', '#ffd43b'], islands: true, foam: true },
     canyon: { sky: ['#5a96cc', '#e9c9a0', '#f4a96e'], fog: '#f0cfaa', hemi: ['#fff0dc', '#9a6040'], sun: '#ffe2b0', sunAt: [0.2, 0.18], ground: ['#d9a06a', '#c9895a', '#b87a4c', '#e8b884', '#a86a44'], far: '#d8a880', bed: '#4f8a90', shore: '#c9895a',
       water: ['#7aa6a8', '#3f7c86'], mount: null, L: { bark: '#7a5a3a', barkD: '#5a402a', leaf: ['#3f5a2a', '#5a7a36', '#7d9a48', '#a8b060'] }, rock: ['#9a5a3a', '#b8714a', '#d08a5e'],
       trees: [['treefern', 1]], grass: ['#8a7a48', '#a8955a', '#c4ad6a'], flowers: ['#ffb3c1', '#ffd43b'], mesas: true, cactus: true, dust: '#f8dcb0' },
@@ -181,14 +223,15 @@ window.DP = window.DP || {};
       trees: [['conifer', 1]], snowTrees: '#f2f7fb', grass: ['#8a7f5a', '#9a8f6a', '#b0a47a'], flowers: ['#d0e4ff'], snow: true, glacierTongue: true, floes: true },
     nightforest: { sky: ['#0c1a3a', '#24406e', '#4a5f88'], fog: '#2a3a5c', hemi: ['#5a6fa0', '#18222c'], sun: '#cfdcff', sunAt: [0.5, 0.42], ground: ['#2f4a4a', '#253c3e', '#1e3434', '#3a5a50', '#18282c'], far: '#22344a', bed: '#1a2a48', shore: '#2c3a40',
       water: ['#30486e', '#1a2a48'], mount: { col: '#2c3d62', lit: '#46608a', snow: null }, L: { bark: '#2a2a34', barkD: '#1a1a24', leaf: ['#142236', '#1d3048', '#2a4560', '#4a6a8a'] }, rock: ['#3d4250', '#545a6a', '#6a7082'],
-      trees: [['conifer', 3], ['tree', 1]], grass: ['#12261f', '#1e3a34', '#2f5048'], flowers: ['#9fd8ff'], night: true, mush: true, fireflies: true },
+      trees: [['conifer', 3], ['tree', 1], ['tree2', 1]], moss: '#2f5048', lily: true, grass: ['#12261f', '#1e3a34', '#2f5048'], flowers: ['#9fd8ff'], night: true, mush: true, fireflies: true },
   };
   LOC.custom = Object.assign({}, LOC.jungle, { custom: true, volcano: false });
   DP.G3.LOC = LOC;
 
   /** Построить мир локации. sc — 3D-сцена (даёт отображение логических координат в 3D: sc.M) */
   function build(sc) {
-    const THREE = T(), M = sc.M, bgId = sc.bg.id, S = LOC[bgId] || LOC.jungle, mobile = sc.isMobile;
+    const THREE = T(), M = sc.M, bgId = sc.bg.id, S = LOC[bgId] || LOC.jungle, q = QL(), mobile = q === 'low', hi = q === 'high';
+    const N = (lo, mid, h) => (mobile ? lo : hi ? h : mid);
     const root = new THREE.Group(); root.name = 'nature';
     const r = rng(bgId.length * 977 + 13), disposables = [], anim = [];
     const own = (o) => { disposables.push(o); return o; };
@@ -203,9 +246,9 @@ window.DP = window.DP || {};
     {
       const rows = [], nearZ = 18;
       const rFar = M.rowOfZ(-far * 0.995);
-      for (let i = 0; i <= 44; i++) { const rr = 1.12 - (1.12 - Math.max(M.rh + 0.01, rFar)) * Math.pow(i / 44, 1.0); rows.push(M.Z(rr * H)); }
+      const RN = N(44, 52, 64); for (let i = 0; i <= RN; i++) { const rr = 1.12 - (1.12 - Math.max(M.rh + 0.01, rFar)) * Math.pow(i / RN, 1.0); rows.push(M.Z(rr * H)); }
       rows.unshift(nearZ); for (let i = 1; i <= 10; i++) rows.push(rows[rows.length - 1] + (-far - rows[rows.length - 1]) * (i / 10));
-      const cols = mobile ? 56 : 80, pos = [], col = [], idx = [], tmp = new THREE.Color();
+      const cols = N(56, 80, 110), pos = [], col = [], idx = [], tmp = new THREE.Color();
       const g0 = S.ground.map(c => C(c)), farC = C(S.far), bed = C(S.bed), shore = C(S.shore);
       rows.forEach((Z, j) => {
         const hw = halfW(Z);
@@ -258,7 +301,7 @@ window.DP = window.DP || {};
 
     // 3) небо: сфера с градиентом, солнце/луна, облака, звёзды
     const sky = new THREE.Group(); sky.name = 'sky'; root.add(sky);
-    const skyGeo = own(new THREE.SphereGeometry(far * 0.92, 24, 12)), skyMat = own(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+    const skyGeo = own(new THREE.SphereGeometry(far * 0.92, mobile ? 24 : 36, mobile ? 12 : 18)), skyMat = own(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
     const skyMesh = new THREE.Mesh(skyGeo, skyMat); skyMesh.renderOrder = -10; sky.add(skyMesh);
     const paintSky = (cols) => {
       const p = skyGeo.attributes.position, arr = new Float32Array(p.count * 3), a = C(cols[0]), b = C(cols[1]), c = C(cols[2]), t = new THREE.Color();
@@ -275,7 +318,7 @@ window.DP = window.DP || {};
       const mt = own(canvasTex('moon', 128, 128, (x) => { x.fillStyle = '#f6f3e2'; x.beginPath(); x.arc(64, 64, 40, 0, TAU); x.fill(); x.fillStyle = 'rgba(200,196,170,.55)'; [[50, 52, 9], [78, 72, 6], [60, 82, 5], [76, 48, 4]].forEach(([a, b, c]) => { x.beginPath(); x.arc(a, b, c, 0, TAU); x.fill(); }); }));
       moon = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: mt, fog: false, depthWrite: false, transparent: true }))); moon.position.copy(sunDir).multiplyScalar(far * 0.84); moon.scale.setScalar(far * 0.07); moon.renderOrder = -8; sky.add(moon);
     }
-    const starsGeo = own(new THREE.BufferGeometry()); { const sp = []; for (let i = 0; i < (mobile ? 220 : 380); i++) { const a = r() * TAU, e = 0.04 + Math.pow(r(), 0.7) * 1.3; sp.push(Math.cos(a) * Math.cos(e) * far * 0.88, Math.sin(e) * far * 0.88, Math.sin(a) * Math.cos(e) * far * 0.88); } starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); }
+    const starsGeo = own(new THREE.BufferGeometry()); { const sp = []; for (let i = 0; i < N(220, 380, 520); i++) { const a = r() * TAU, e = 0.04 + Math.pow(r(), 0.7) * 1.3; sp.push(Math.cos(a) * Math.cos(e) * far * 0.88, Math.sin(e) * far * 0.88, Math.sin(a) * Math.cos(e) * far * 0.88); } starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); }
     const starsMat = own(new THREE.PointsMaterial({ color: '#fffff0', size: mobile ? 2.2 : 1.8, sizeAttenuation: false, fog: false, transparent: true, depthWrite: false, opacity: 0.9 }));
     const stars = new THREE.Points(starsGeo, starsMat); stars.renderOrder = -9; stars.visible = !!S.night; sky.add(stars);
     const cloudTex = canvasTex('cloud', 256, 128, (x, w, h) => { const R = rng(7); for (let i = 0; i < 14; i++) { const cx = w * (0.18 + R() * 0.64), cy = h * (0.45 + R() * 0.25), rr = h * (0.14 + R() * 0.16); const g = x.createRadialGradient(cx, cy, 0, cx, cy, rr); g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(0.7, 'rgba(255,255,255,.75)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.beginPath(); x.arc(cx, cy, rr, 0, TAU); x.fill(); } });
@@ -363,7 +406,7 @@ window.DP = window.DP || {};
       const hAt = (X, Z) => hill(X, Z);
       const zBand0 = M.Z(sc.bg.zones.ground[0] * H), zBand1 = M.Z(sc.bg.zones.ground[1] * H);
       // деревья: за полосой прогулок — лес; по краям мира — рамка
-      const nT = mobile ? 40 : 64, kinds = S.trees, tot = kinds.reduce((a, k) => a + k[1], 0);
+      const nT = N(48, 66, 84), kinds = S.trees, tot = kinds.reduce((a, k) => a + k[1], 0);
       kinds.forEach(([kind, wgt], ki) => {
         const n = Math.round(nT * wgt / tot);
         const gapW = M.Wu * (S.volcano || S.glacierTongue ? 0.2 : 0.1);
@@ -371,23 +414,24 @@ window.DP = window.DP || {};
         const sides = scatter(Math.round(n * 0.25), [zBand1 + 4, zBand0], () => M.Wu / 2 + 10, (X, Z) => Math.abs(X) > M.Wu / 2 - 2 && ok(X, Z, 3) ? { X, Z, s: (2 + r() * 0.8) * (kind === 'conifer' ? 1.4 : 1), ry: r() * TAU, tint: 0.9 + r() * 0.2 } : null);
         const list = back.concat(sides);
         let geo;
-        if (kind === 'palm') geo = KIT.palm(S.L, rng(5 + ki), 0.18); else if (kind === 'treefern') geo = KIT.treefern(S.L, rng(6)); else if (kind === 'conifer') geo = KIT.conifer(S.L, rng(7), S.snowTrees); else geo = KIT.tree(S.L, rng(8));
+        if (kind === 'palm') geo = KIT.palm(S.L, rng(5 + ki), 0.18); else if (kind === 'tree2') geo = KIT.tree2(S.L, rng(18)); else if (kind === 'treefern') geo = KIT.treefern(S.L, rng(6)); else if (kind === 'conifer') geo = KIT.conifer(S.L, rng(7), S.snowTrees); else geo = KIT.tree(S.L, rng(8));
         inst(geo, vegTree, list, 'trees-' + kind);
       });
       // кусты и камни для красоты (не прячутся) — по краям полосы и вдали
-      const bushes = scatter(mobile ? 26 : 44, [zBand1 + 2, zBand0 * 1.4], (Z) => halfW(Z) * 0.8, (X, Z) => (Z < zBand0 || Math.abs(X) > M.Wu * 0.42) && ok(X, Z, 1.5) ? { X, Z, Y: hAt(X, Z), s: 0.9 + r() * 1.3, ry: r() * TAU, tint: 0.85 + r() * 0.3 } : null);
+      const bushes = scatter(N(32, 46, 60), [zBand1 + 2, zBand0 * 1.4], (Z) => halfW(Z) * 0.8, (X, Z) => (Z < zBand0 || Math.abs(X) > M.Wu * 0.42) && ok(X, Z, 1.5) ? { X, Z, Y: hAt(X, Z), s: 0.9 + r() * 1.3, ry: r() * TAU, tint: 0.85 + r() * 0.3 } : null);
       inst(KIT.bush(S.L, rng(9), bgId === 'glacier' ? 'snowbush' : bgId === 'canyon' ? 'dry' : bgId === 'jungle' ? 'berry' : 'bush'), vegTree, bushes, 'bushes');
-      const rocks = scatter(mobile ? 14 : 22, [zBand1, zBand0 * 1.6], (Z) => halfW(Z) * 0.8, (X, Z) => ok(X, Z, 1) ? { X, Z, Y: hAt(X, Z) - 0.15, s: 0.4 + r() * 1.1, ry: r() * TAU, tint: 0.9 + r() * 0.2 } : null);
-      inst(KIT.rock(S.rock, rng(10), bgId === 'glacier'), solid, rocks, 'rocks');
+      const rocks = scatter(N(14, 22, 30), [zBand1, zBand0 * 1.6], (Z) => halfW(Z) * 0.8, (X, Z) => ok(X, Z, 1) ? { X, Z, Y: hAt(X, Z) - 0.15, s: 0.4 + r() * 1.1, ry: r() * TAU, tint: 0.9 + r() * 0.2 } : null);
+      inst(KIT.rock(S.rock, rng(10), bgId === 'glacier', S.moss), solid, rocks, 'rocks');
+      if (!mobile) { const slabs = scatter(N(0, 8, 14), [zBand1, zBand0 * 1.4], (Z) => halfW(Z) * 0.8, (X, Z) => ok(X, Z, 1.2) && (Z < zBand0 || Math.abs(X) > M.Wu * 0.38) ? { X, Z, Y: hAt(X, Z) - 0.05, s: 0.5 + r() * 0.8, ry: r() * TAU, tint: 0.9 + r() * 0.2 } : null); inst(KIT.slab(S.rock, rng(19)), solid, slabs, 'slabs'); }
       // трава: в полосе и перед ней (шевелится от ветра)
-      const grass = scatter(mobile ? 230 : 520, [zBand1 + 8, zBand0 * 1.25], (Z) => halfW(Z) * 0.75, (X, Z) => ok(X, Z, 0.4) ? { X, Z, Y: hAt(X, Z), s: 0.7 + r() * 0.9, ry: r() * TAU, tint: 0.8 + r() * 0.4 } : null);
+      const grass = scatter(N(480, 700, 1000), [zBand1 + 8, zBand0 * 1.25], (Z) => halfW(Z) * 0.75, (X, Z) => ok(X, Z, 0.4) ? { X, Z, Y: hAt(X, Z), s: 0.7 + r() * 0.9, ry: r() * TAU, tint: 0.8 + r() * 0.4 } : null);
       inst(KIT.grass(S.grass, rng(11)), vegSoft, grass, 'grass');
-      const flowers = scatter(mobile ? 26 : 50, [zBand1, zBand0], (Z) => halfW(Z) * 0.6, (X, Z) => ok(X, Z, 0.6) ? { X, Z, s: 0.8 + r() * 0.6, ry: r() * TAU } : null);
+      const flowers = scatter(N(48, 80, 110), [zBand1, zBand0], (Z) => halfW(Z) * 0.6, (X, Z) => ok(X, Z, 0.6) ? { X, Z, s: 0.8 + r() * 0.6, ry: r() * TAU } : null);
       inst(KIT.flowers(S.L, rng(12), S.flowers), vegSoft, flowers, 'flowers');
       // большие листья на переднем плане (как рамка кадра)
       const front = []; for (let X = -M.Wu / 2 - 8; X < M.Wu / 2 + 8; X += 6 + r() * 5) { const Z = M.Z(H * (1.03 + r() * 0.05)); front.push({ X, Z, s: 2.2 + r() * 1.4, ry: r() * TAU }); }
       inst(bgId === 'canyon' || bgId === 'glacier' ? KIT.grass(S.grass, rng(13)) : KIT.fern(S.L, rng(13)), vegSoft, front, 'front');
-      const ferns = scatter(mobile ? 14 : 26, [zBand1, zBand0 * 1.2], (Z) => halfW(Z) * 0.8, (X, Z) => (Z < zBand0 || Math.abs(X) > M.Wu * 0.4) && ok(X, Z, 1) && bgId !== 'canyon' && bgId !== 'glacier' ? { X, Z, s: 1 + r() * 0.8, ry: r() * TAU } : null);
+      const ferns = scatter(N(14, 26, 36), [zBand1, zBand0 * 1.2], (Z) => halfW(Z) * 0.8, (X, Z) => (Z < zBand0 || Math.abs(X) > M.Wu * 0.4) && ok(X, Z, 1) && bgId !== 'canyon' && bgId !== 'glacier' ? { X, Z, s: 1 + r() * 0.8, ry: r() * TAU } : null);
       inst(KIT.fern(S.L, rng(14)), vegSoft, ferns, 'ferns');
       if (S.cactus) { const cs = scatter(mobile ? 10 : 16, [zBand1, zBand0 * 1.6], (Z) => halfW(Z) * 0.8, (X, Z) => (Z < zBand0 || Math.abs(X) > M.Wu * 0.42) && ok(X, Z, 1) ? { X, Z, s: 1 + r() * 1.4, ry: r() * TAU } : null); inst(KIT.cactus(rng(15)), solid, cs, 'cactus'); }
       if (S.mush) { // светящиеся грибы
@@ -398,6 +442,31 @@ window.DP = window.DP || {};
         inst(capGeo, own(new THREE.MeshBasicMaterial({ color: '#7fe0d0' })), caps, 'mush-cap');
         const gt = radialTex('mushglow', [[0, 'rgba(127,255,224,.55)'], [1, 'rgba(127,255,224,0)']]);
         ms.slice(0, 10).forEach((m, i) => { const s = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: gt, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }))); s.position.set(m.X, 0.3 * m.s, m.Z); s.scale.setScalar(2.2 * m.s); root.add(s); anim.push((t) => { s.material.opacity = 0.6 + 0.3 * Math.sin(t * 1.5 + i); }); });
+      }
+      // кувшинки в водоёмах
+      if (S.lily && sc.reflections) {
+        const lil = [];
+        sc.reflections.forEach(rf => { const p = rf.p; if (!p.ellipse) return; for (let i = 0; i < N(3, 5, 7); i++) { const a = r() * TAU, d = 0.25 + Math.sqrt(r()) * 0.55, x = p.cx * W + Math.cos(a) * p.rx * W * d, y = p.cy * H + Math.sin(a) * p.ry * H * d; if (!sc.inWater(x, y)) continue; const q2 = M.ground(x, y); lil.push({ X: q2.X, Z: q2.Z, Y: M.waterY + 0.03, s: 0.8 + r() * 0.6, ry: r() * TAU }); } });
+        inst(KIT.lily(rng(20)), vegStill, lil, 'lilies');
+      }
+      // бабочки днём: два крылышка машут, летают петлями над травой
+      if (S.butterflies && !S.night) {
+        const nb = N(5, 9, 14), wg = new THREE.BufferGeometry();
+        wg.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0.32, 0.05, 0.22, 0.3, 0.02, -0.2, 0, 0, 0, -0.32, 0.05, 0.22, -0.3, 0.02, -0.2], 3)); wg.computeVertexNormals();
+        const bm = own(new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })), wingsL = [], flyers = [];
+        const mkWing = (side) => { const g = own(new THREE.BufferGeometry()); g.setAttribute('position', new THREE.Float32BufferAttribute(side > 0 ? [0, 0, 0, 0.32, 0, 0.22, 0.3, 0, -0.2] : [0, 0, 0, -0.32, 0, 0.22, -0.3, 0, -0.2], 3)); return g; };
+        wg.dispose();
+        const gL = mkWing(-1), gR = mkWing(1);
+        for (let i = 0; i < nb; i++) {
+          const b = new THREE.Group(), col = S.butterflies[i % S.butterflies.length], m = own(bm.clone()); m.color.set(col);
+          const L = new THREE.Mesh(gL, m), R2 = new THREE.Mesh(gR, m); b.add(L); b.add(R2); wingsL.push([L, R2]);
+          b.userData = { a: r() * TAU, rr: 2 + r() * 4, cx: (r() - 0.5) * M.Wu * 0.8, cz: zBand0 + (zBand1 - zBand0) * (0.15 + r() * 0.7), sp: 0.3 + r() * 0.4, ph: r() * 9 };
+          b.scale.setScalar(0.5 + r() * 0.3); root.add(b); flyers.push(b);
+        }
+        anim.push((t) => flyers.forEach((b, i) => {
+          const u = b.userData, a = u.a + t * u.sp; b.position.set(u.cx + Math.cos(a) * u.rr, 0.8 + Math.sin(t * 1.3 + u.ph) * 0.5 + Math.sin(a * 2) * 0.3, u.cz + Math.sin(a) * u.rr * 0.5);
+          b.rotation.y = -a; const f = Math.sin(t * 16 + u.ph) * 0.9; wingsL[i][0].rotation.z = -f; wingsL[i][1].rotation.z = f;
+        }));
       }
     } else if (sc.customImg) { // свой фон — фото позади всего
       const D = far * 0.8, upp = M.kX * D / M.dzMid, tex = own(new THREE.Texture(sc.customImg)); tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
@@ -411,7 +480,7 @@ window.DP = window.DP || {};
     let pts = null;
     const ptsKind = S.snow ? 'snow' : S.fireflies ? 'fire' : (S.pollen || S.dust) ? 'dust' : null;
     if (ptsKind && !S.custom) {
-      const n = ptsKind === 'snow' ? (mobile ? 160 : 300) : ptsKind === 'fire' ? 28 : 30, g = own(new THREE.BufferGeometry()), arr = new Float32Array(n * 3), seeds = [];
+      const n = ptsKind === 'snow' ? N(160, 300, 420) : ptsKind === 'fire' ? N(28, 40, 56) : N(30, 60, 90), g = own(new THREE.BufferGeometry()), arr = new Float32Array(n * 3), seeds = [];
       for (let i = 0; i < n; i++) seeds.push([r(), r(), r(), r()]);
       g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
       const tex = ptsKind === 'fire' ? radialTex('firefly', [[0, 'rgba(240,255,170,1)'], [0.3, 'rgba(230,255,150,.6)'], [1, 'rgba(230,255,150,0)']]) : radialTex('flake', [[0, 'rgba(255,255,255,1)'], [0.5, 'rgba(255,255,255,.7)'], [1, 'rgba(255,255,255,0)']]);

@@ -137,6 +137,10 @@ const CANVAS_PROBE = () => {
     await page.screenshot({ path: path.join(SHOTS, shot) });
     ok(`v3: панель «${name}» помещается по ширине`, f.sw <= f.vw && f.r <= f.vw + 1 && f.l >= -1 && f.ow === 0, JSON.stringify(f));
   };
+  await fits('Меню', () => window.dpPark.screens.menu(), 'mobile-v4-menu.png');
+  const mf = await page.evaluate(() => { const p = document.querySelector('.overlay .panel'), t = [...document.querySelectorAll('#m-tiles [data-sec]')], q = [...document.querySelectorAll('#m-qa [data-go]')]; const vis = (el) => { const r = el.getBoundingClientRect(); return r.bottom <= innerHeight + 1 && r.top >= 0 && r.width > 60; }; return { tiles: t.length, qa: q.map(x => x.dataset.go).join(','), visible: t.concat(q).every(vis), scroll: p.scrollHeight - p.clientHeight, minTap: Math.min(...t.concat(q).map(x => x.getBoundingClientRect().height)) }; });
+  ok('v4: меню на iPhone — 4 быстрых действия и 6 разделов видны целиком, кнопки ≥ 44 px', mf.tiles === 6 && /sleepall|wakeall/.test(mf.qa) && /playall/.test(mf.qa) && mf.visible && mf.minTap >= 44, JSON.stringify(mf));
+  await fits('Раздел «Действия»', () => window.dpPark.screens.section('acts'), 'mobile-v4-actions.png');
   await fits('Мои динозавры', () => window.dpPark.screens.dinos(), 'mobile-v3-dinos.png');
   await fits('Яйца', () => window.dpPark.screens.eggs(), 'mobile-v3-eggs.png');
   await fits('Достижения', () => window.dpPark.screens.ach(), 'mobile-v3-ach.png');

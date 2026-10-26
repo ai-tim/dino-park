@@ -8,7 +8,9 @@ window.DP = window.DP || {};
   const T = () => window.THREE;
   const Din = () => DP.Dinos;
   const mobile = () => !!(DP.Scene && DP.Scene.PERF && DP.Scene.PERF.mobile);
-  const Q = () => mobile() ? { res: 1, step: 3.4, tex: 512, sprite: 512 } : { res: 1.25, step: 2.6, tex: 1024, sprite: 1024 };
+  const QL = () => (DP.Scene && DP.Scene.PERF && DP.Scene.PERF.quality) || (mobile() ? 'low' : 'high');
+  // детализация: телефоны — как раньше (память iPhone), ТВ — средняя, компьютер — мелкая сетка, больше сглаживания, чешуя
+  const Q = () => { const q = QL(); return q === 'low' ? { res: 1, step: 3.4, tex: 512, sprite: 512, smooth: 2, scales: false } : q === 'mid' ? { res: 1.25, step: 2.6, tex: 1024, sprite: 1024, smooth: 3, scales: true } : { res: 1.5, step: 2.0, tex: 1024, sprite: 1024, smooth: 4, scales: true }; };
   const SCALE = 4.2 / 428; // единиц сцены на единицу рисунка (ширина рисунка = 4.2 при size=1)
   const ORIGIN = { x: 200, y: 248 }; // точка между лап на земле
   // толщина: доля «круглого» сечения по видам и частям
@@ -70,7 +72,7 @@ window.DP = window.DP || {};
       type[q] = s >= thrIn ? 2 : s > thrOut ? 1 : 0;
       if (type[q] === 2) { const Rl = Math.max(R[q], s); Hh[q] = Math.min(o.cap || 1e9, o.k * Math.sqrt(Math.max(0, s * (2 * Rl - s)))); }
     }
-    for (let pass = 0; pass < 2; pass++) { // сглаживание высоты
+    for (let pass = 0; pass < (o.smooth || 2); pass++) { // сглаживание высоты
       const h2 = Hh.slice();
       for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
         const q = j * nx + i; if (type[q] !== 2) continue;
@@ -158,10 +160,10 @@ window.DP = window.DP || {};
       const core = p.s.filter(s => s[0] === 'B' || s[0] === 'F' || s[0] === 'L').map(s => s[1]);
       const A = p.s.filter(s => s[0] === 'A').map(s => s[1]), Dd = p.s.filter(s => s[0] === 'D').map(s => s[1]), Hh = p.s.filter(s => s[0] === 'H').map(s => s[1]);
       const k = (ROLE_K[p.role] || 0.7) * th, cap = ROLE_CAP[p.role];
-      if (core.length) layers.push({ kind: 'core', paths: core, o: { step: q.step, k, cap, z: 0, rad: p.role === 'body' ? 30 : 18 } });
+      if (core.length) layers.push({ kind: 'core', paths: core, o: { step: q.step, k, cap, z: 0, rad: p.role === 'body' ? 30 : 18, smooth: q.smooth } });
       if (A.length) layers.push({ kind: 'A', paths: A, o: { step: q.step * 0.8, k: acc.k, cap: acc.cap, z: acc.z || 0, rad: 10 } });
       if (Dd.length) layers.push({ kind: 'D', paths: Dd, o: { step: q.step * 0.8, k: acc.k, cap: acc.cap, z: -(acc.z || 3), rad: 10 } });
-      if (Hh.length) layers.push({ kind: 'H', paths: Hh, o: { step: q.step * 0.6, k: 0.7, cap: 8, z: 0, rad: 6 } });
+      if (Hh.length) layers.push({ kind: 'H', paths: Hh, o: { step: q.step * (q.smooth > 2 ? 0.45 : 0.6), k: 0.75, cap: 9, z: 0, rad: 6 } }); // рога, когти, зубы
       const eyes = p.s.filter(s => s[0] === 'E').map(s => ({ x: s[1], y: s[2], r: s[3] }));
       return { i, n: p.n, role: p.role, pivot: p.pivot, amp: p.amp == null ? 1 : p.amp, off: p.off || 0, far, layers, eyes, all: p.s.filter(s => Din().OUTLINE_TYPES[s[0]]).map(s => s[1]) };
     });
@@ -370,8 +372,22 @@ window.DP = window.DP || {};
     return geoCache[key];
   }
 
+  // ——— чешуя: маленькая повторяющаяся карта рельефа (мягкие бугорки-«плитки»), общая для всех динозавров ———
+  let scaleTex = null;
+  function scaleBump() {
+    if (scaleTex) return scaleTex;
+    const THREE = T(), S = 64, n = 6, c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d');
+    x.fillStyle = '#000'; x.fillRect(0, 0, S, S);
+    const cell = S / n;
+    for (let j = -1; j <= n; j++) for (let i = -1; i <= n; i++) {
+      const cx = (i + (j % 2 ? 0.5 : 0)) * cell + cell / 2, cy = j * cell + cell / 2, g = x.createRadialGradient(cx - cell * 0.12, cy - cell * 0.12, 0, cx, cy, cell * 0.62);
+      g.addColorStop(0, '#fff'); g.addColorStop(0.6, '#999'); g.addColorStop(1, '#000'); x.fillStyle = g; x.beginPath(); x.arc(cx, cy, cell * 0.62, 0, TAU); x.fill();
+    }
+    scaleTex = new THREE.CanvasTexture(c); scaleTex.colorSpace = THREE.NoColorSpace; scaleTex.wrapS = scaleTex.wrapT = THREE.RepeatWrapping; scaleTex.repeat.set(26, 26);
+    return scaleTex;
+  }
   // ——— глаза, веки, шапки ———
-  let eyeGeo = null, lidGeo = null;
+  let eyeGeo = null, lidGeo = null, scleraMat = null, glintMat = null;
   const hatTex = {};
   function hatTexture(hat) {
     if (hatTex[hat]) return hatTex[hat];
@@ -401,12 +417,16 @@ window.DP = window.DP || {};
     return Promise.all([geoP, texP]).then(([set, tex]) => {
       if (e._dead3d) { releaseGeometry(set); releaseTex(tex); return null; }
       const sh = set.sh;
-      const mat = legend ? new THREE.MeshPhongMaterial({ map: tex.tex, shininess: 70, specular: new THREE.Color('#fff0b0'), emissive: new THREE.Color('#3a2a00') })
-        : new THREE.MeshLambertMaterial({ map: tex.tex });
+      const bump = Q().scales && !sh.free ? { bumpMap: scaleBump(), bumpScale: 0.55 } : {};
+      const mat = legend ? new THREE.MeshPhongMaterial(Object.assign({ map: tex.tex, shininess: 70, specular: new THREE.Color('#fff0b0'), emissive: new THREE.Color('#3a2a00') }, bump))
+        : Q().scales ? new THREE.MeshPhongMaterial(Object.assign({ map: tex.tex, shininess: 14, specular: new THREE.Color('#2a2a24') }, bump)) // лёгкий влажный блеск кожи
+          : new THREE.MeshLambertMaterial({ map: tex.tex });
       const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
       const lidCol = new THREE.Color(tex.lid || (sp ? Din().dark(Din().palOf(sp, d.palette || 0).b, 0.12) : '#6a7a40'));
       const parts = [], eyes = [];
-      if (!eyeGeo) { eyeGeo = new THREE.SphereGeometry(1, 10, 8); lidGeo = new THREE.SphereGeometry(1, 10, 6, 0, TAU, 0, Math.PI * 0.62); }
+      const lo = QL() === 'low';
+      if (!eyeGeo) { eyeGeo = lo ? new THREE.SphereGeometry(1, 10, 8) : new THREE.SphereGeometry(1, 16, 12); lidGeo = new THREE.SphereGeometry(1, lo ? 10 : 16, lo ? 6 : 8, 0, TAU, 0, Math.PI * 0.62); }
+      if (!scleraMat) { scleraMat = new THREE.MeshPhongMaterial({ color: '#f4efe0', shininess: 60, specular: new THREE.Color('#ffffff') }); glintMat = new THREE.MeshBasicMaterial({ color: '#ffffff' }); }
       const eyeMat = new THREE.MeshPhongMaterial({ color: sp && sp.eye === 'slit' ? '#2a1404' : '#160c06', shininess: 90, specular: new THREE.Color('#ffffff') });
       const lidMat = new THREE.MeshLambertMaterial({ color: lidCol });
       sh.parts.forEach((p, i) => {
@@ -416,10 +436,13 @@ window.DP = window.DP || {};
         const mesh = new THREE.Mesh(geo, mat); g.add(mesh);
         body.add(g); parts.push({ p, g, mesh });
         p.eyes.forEach(E => [1, -1].forEach(side => {
-          const em = new THREE.Mesh(eyeGeo, eyeMat), r = E.r * SCALE * 0.95;
-          em.scale.setScalar(r); em.position.set((E.x - p.pivot[0]) * SCALE, (p.pivot[1] - E.y) * SCALE, side * E.z * SCALE);
-          const lid = new THREE.Mesh(lidGeo, lidMat); lid.scale.setScalar(r * 1.28); lid.position.copy(em.position); lid.rotation.x = side > 0 ? Math.PI / 2 : -Math.PI / 2; lid.visible = false;
-          g.add(em); g.add(lid); eyes.push({ em, lid, side });
+          const r = E.r * SCALE * 0.95, ex = (E.x - p.pivot[0]) * SCALE, ey = (p.pivot[1] - E.y) * SCALE, ez = side * E.z * SCALE;
+          // глазное яблоко (светлое), зрачок чуть вперёд и наружу, блик — живой взгляд
+          const sc = new THREE.Mesh(eyeGeo, scleraMat); sc.scale.set(r * 1.05, r * 1.05, r * 0.8); sc.position.set(ex, ey, ez);
+          const em = new THREE.Mesh(eyeGeo, eyeMat); em.scale.setScalar(r * 0.68); em.position.set(ex + r * 0.18, ey, ez + side * r * 0.45);
+          const gl = new THREE.Mesh(eyeGeo, glintMat); gl.scale.setScalar(r * 0.2); gl.position.set(ex + r * 0.34, ey + r * 0.3, ez + side * r * 0.86);
+          const lid = new THREE.Mesh(lidGeo, lidMat); lid.scale.setScalar(r * 1.32); lid.position.set(ex, ey, ez); lid.rotation.x = side > 0 ? Math.PI / 2 : -Math.PI / 2; lid.visible = false;
+          g.add(sc); g.add(em); g.add(gl); g.add(lid); eyes.push({ em, lid, side, sc, gl });
         }));
       });
       // рост и размах модели (в единицах рисунка)
@@ -469,7 +492,8 @@ window.DP = window.DP || {};
       if (j < 0.12) sy *= 1 - (0.12 - j) * 1.5; if (j > 0.85) sy *= 1 - (j - 0.85) * 1.2;
       if (e.spin) spin = j * TAU;
     }
-    body.position.y = oy; body.rotation.set(rotX, 0, rotZ);
+    const yaw = hab === 'ground' ? Math.sin(e.phase) * 0.06 * mv : 0; // при шаге корпус чуть поворачивается из стороны в сторону
+    body.position.y = oy; body.rotation.set(rotX, yaw, rotZ);
     body.scale.set(1 / Math.sqrt(sy), sy, 1 / Math.sqrt(sy));
     const age = sc.t - e.born; const grow = age < 0.4 ? 0.3 + age / 0.4 * 0.7 : 1;
     m.root.userData.grow = grow;
@@ -478,14 +502,15 @@ window.DP = window.DP || {};
       const a = -sc.partAngle(e, p);
       g.rotation.set(0, 0, a);
       if (p.role === 'leg' && lie) { const front = p.pivot[0] > (m.sh.parts.find(q => q.role === 'body') || p).pivot[0]; g.rotation.z += (front ? -1.15 : 1.15) * lie; }
-      if (p.role === 'tail') g.rotation.y = Math.sin(t * 1.5 + e.seed) * 0.16 + Math.sin(e.phase) * 0.1 * mv + (e.state === 'play' ? Math.sin(t * 9) * 0.15 : 0);
+      if (p.role === 'tail') { g.rotation.y = Math.sin(t * 1.5 + e.seed) * 0.16 + Math.sin(e.phase - 0.9) * 0.14 * mv - yaw * 1.4 + (e.state === 'play' ? Math.sin(t * 9) * 0.15 : 0); g.rotation.z += Math.sin(e.phase * 2 - 0.6) * 0.035 * mv; }
+      if ((p.role === 'head' || p.role === 'neck') && hab === 'ground') { g.rotation.z -= rotZ * 0.7 - Math.sin(e.phase * 2 + 0.5) * 0.025 * mv; g.rotation.y -= yaw * 0.8; } // голова «держит горизонт» и кивает в такт шагу
       if ((p.role === 'head' || p.role === 'neck') && e.act === 'look' && e.mode === 'idle') g.rotation.y = Math.sin(t * 0.9 + e.seed) * 0.35;
       if (p.role === 'wing') { const flap = lie ? 0.25 : 1.0 + Math.sin(t * (6 + 3 * mv) + e.seed + p.off) * 0.55; g.rotation.x = (p.far ? -1 : 1) * flap; }
       if (p.role === 'flip') g.rotation.x = (p.far ? -1 : 1) * (0.9 + Math.sin(t * 2.6 + e.seed + p.off) * 0.25);
     });
     // моргание и сон: веки
     const closed = lie > 0.55 || e.blinkT < 0;
-    m.eyes.forEach(E => { E.lid.visible = closed; });
+    m.eyes.forEach(E => { E.lid.visible = closed; E.em.visible = !closed; if (E.gl) E.gl.visible = !closed; });
     if (m.legend) m.mat.emissive.setRGB(0.22 + 0.08 * Math.sin(t * 2.4 + e.seed), 0.16 + 0.06 * Math.sin(t * 2.4 + e.seed), 0);
     m.spin = spin;
   }
@@ -509,6 +534,8 @@ window.DP = window.DP || {};
     Object.values(texCache).forEach(t => { if (t && t.tex) { t.tex.dispose(); if (t.canvas) t.canvas.width = t.canvas.height = 0; } }); Object.keys(texCache).forEach(k => delete texCache[k]);
     Object.values(hatTex).forEach(h => { h.tex.dispose(); h.mat.dispose(); }); Object.keys(hatTex).forEach(k => delete hatTex[k]);
     if (eyeGeo) { eyeGeo.dispose(); lidGeo.dispose(); eyeGeo = lidGeo = null; }
+    if (scleraMat) { scleraMat.dispose(); glintMat.dispose(); scleraMat = glintMat = null; }
+    if (scaleTex) { scaleTex.dispose(); scaleTex = null; }
     if (scratch) { scratch.width = scratch.height = 0; scratch = null; }
   }
 
