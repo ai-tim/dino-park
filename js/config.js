@@ -5,10 +5,13 @@
  * wsUrl = "wss://ваш-сервер.example.com/ws" → статический сайт (например, GitHub Pages) + отдельный сервер синхронизации.
  *
  * SUPPORT_TELEGRAM_URL — ссылка на Telegram поддержки (https://t.me/…). Пусто → в разделе «Поддержка» форма обратной связи.
+ * GIFTS_REPO — репозиторий сайта на GitHub: из него игра читает ленту подарков gifts/feed.json (raw.githubusercontent.com),
+ *              а админка (admin.html) записывает её через GitHub API.
  * ADMIN_PUBLIC_KEY — ОТКРЫТЫЙ ключ (ECDSA P-256) для проверки подарочных кодов администратора.
  *                    Закрытый ключ хранится только у администратора (admin.html) и сюда не попадает.
  */
 window.DP_CONFIG = Object.assign({ wsUrl: null }, window.DP_CONFIG || {}, {
   SUPPORT_TELEGRAM_URL: "",
+  GIFTS_REPO: "ai-tim/dino-park",
   ADMIN_PUBLIC_KEY: {"kty":"EC","crv":"P-256","x":"ZIzvhUoPK1_XyYk2n3hJJYn7D-_PUQovLm2AOEBFlbs","y":"bcrkqVgl5cz7ycpMZSXbTkfGEQjvBw6Z7bgXPUy-8D8"}
 });

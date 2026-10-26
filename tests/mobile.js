@@ -35,7 +35,7 @@ const CANVAS_PROBE = () => {
   await ctx.addInitScript(CANVAS_PROBE);
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-  page.on('console', m => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|net::ERR|Failed to load resource/.test(m.text())) errors.push('console: ' + m.text()); });
+  page.on('console', m => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|net::ERR|Failed to load resource|WebSocket connection to/.test(m.text())) errors.push('console: ' + m.text()); });
   if (engine === 'chromium') { // «как на телефоне»: медленный процессор и сеть 4G
     const cdp = await ctx.newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });

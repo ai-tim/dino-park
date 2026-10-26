@@ -542,9 +542,10 @@ const watch = (page, tag) => {
       // admin.html: импорт ключа, создание кода
       const ap = await vctx.newPage(); watch(ap, 'admin');
       await ap.goto(BASE + '/admin.html'); await ap.waitForTimeout(500);
+      await ap.click('#key-sec summary');
       await ap.fill('#key-in', JSON.stringify({ kty: privJwk.kty, crv: privJwk.crv, x: privJwk.x, y: privJwk.y, d: privJwk.d })); await ap.click('#key-import'); await ap.waitForTimeout(300);
       const ast = await ap.textContent('#key-st');
-      await ap.selectOption('#g-kind', 'item'); await ap.fill('#g-msg', 'Из админки'); await ap.click('#g-make'); await ap.waitForTimeout(500);
+      await ap.selectOption('#g-kind', 'item'); await ap.fill('#g-msg', 'Из админки'); await ap.click('#b-code'); await ap.click('#g-make'); await ap.waitForTimeout(500);
       const alink = await ap.getAttribute('#g-out a', 'href');
       ok('v3: admin.html — ключ совпадает с config.js, код создан', /совпадает/.test(ast) && /park\.html\?gift=DP1\./.test(alink || ''), ast.slice(0, 60));
       await ap.close();

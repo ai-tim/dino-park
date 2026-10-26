@@ -585,6 +585,9 @@
     lifeEvents(Life.checkAch(park));
   }
   async function redeem(code) {
+    code = String(code || '').trim();
+    if (!code) throw new Error('Введи код — например, DINO-ABCD-2345');
+    if (!/^DP1\./.test(code) && DP.Gifts && DP.Gifts.looksShort(code)) return redeemShort(code);
     const p = await Life.verifyCode(code, park.id);
     let used = [];
     try { used = JSON.parse(localStorage.getItem('dp_redeemed') || '[]'); } catch (e) { used = []; }
@@ -595,6 +598,41 @@
     used.push(p.n); localStorage.setItem('dp_redeemed', JSON.stringify(used.slice(-200)));
     lifeEvents(Life.checkAch(park)); updateHud(); commit();
     return p;
+  }
+  // короткий код DINO-XXXX-XXXX: ищем его хеш в подписанной ленте подарков (js/gifts.js)
+  async function redeemShort(code) {
+    if (DEMO) throw new Error('В демо-парке коды не работают — открой свой парк');
+    const p = await DP.Gifts.findCode(code);
+    let used = [];
+    try { used = JSON.parse(localStorage.getItem('dp_redeemed') || '[]'); } catch (e) { used = []; }
+    if (park.life.redeemed.indexOf(p.id) >= 0) throw new Error('Этот код уже использован в этом парке');
+    if (p.u === 'once' && used.indexOf(p.id) >= 0) throw new Error('Этот код уже использован на этом устройстве');
+    Life.grant(park, p.g, p.m, 'Динопарк');
+    park.life.redeemed.push(p.id); park.life.redeemed = park.life.redeemed.slice(-200);
+    if (p.u === 'once') { used.push(p.id); localStorage.setItem('dp_redeemed', JSON.stringify(used.slice(-200))); }
+    lifeEvents(Life.checkAch(park)); updateHud(); commit();
+    return p;
+  }
+  // подарки «всем» и «сюрприз этому парку» — приходят сами при открытии парка
+  let giftBusy = false;
+  async function feedGifts() {
+    if (DEMO || !DP.Gifts || giftBusy) return [];
+    giftBusy = true;
+    let r; try { r = await DP.Gifts.load({ mqttMs: 6000 }); } catch (e) { r = null; } finally { giftBusy = false; }
+    if (!r) return [];
+    const list = DP.Gifts.pending(park, r.list);
+    if (!list.length) return [];
+    list.forEach(p => { Life.grant(park, p.g, p.m, 'Динопарк'); park.life.redeemed.push(p.id); });
+    park.life.redeemed = park.life.redeemed.slice(-200);
+    lifeEvents(Life.checkAch(park)); updateHud(); commit();
+    const show = () => {
+      if (UI.isOpen()) return setTimeout(show, 1500);
+      UI.show(`${UI.head('🎁 Тебе подарок!', { sub: list.length > 1 ? 'Подарков: ' + list.length : 'От Динопарка' })}
+        <div class="gift-list">${list.map(p => `<div class="gift" data-gid="${U.esc(p.id)}"><span class="e">${Life.giftEmoji(p.g)}</span><div><b>${U.esc(Life.giftName(p.g))}</b>${p.m ? `<div class="s">${U.esc(p.m)}</div>` : ''}</div></div>`).join('')}</div>
+        <div class="btn-row"><button class="btn green" id="gf-ok">Ура, спасибо!</button></div>`, (pp) => { pp.querySelector('#gf-ok').onclick = () => UI.close(); });
+    };
+    setTimeout(show, 600);
+    return list;
   }
   async function copyText(t) {
     try { await navigator.clipboard.writeText(t); return true; } catch (e) { /* старый способ */ }
@@ -656,6 +694,8 @@
   function v3Start() {
     buildHud();
     lifeInbox();
+    setTimeout(() => { feedGifts(); }, 1500);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) feedGifts(); });
     lifeEvents(Life.tick(park, Date.now(), { lay: false }));
     setInterval(lifeTick, 5000);
     document.addEventListener('visibilitychange', () => { if (document.hidden) { Life.tick(park, Date.now(), { lay: false }); commit(); } });
@@ -742,13 +782,14 @@
         UI.show(`${UI.head('🥚 Яйца и награды', { back: true, sub: 'Динозавры несут яйца за заботу. Яйца — это монетки парка' })}
           <div class="egg-bank">${Life.RARITY.map(r => `<div class="egg-cell" data-r="${r.id}"><div class="e">${r.emoji}</div><b>${L.eggs[r.id] || 0}</b><span>${r.name}</span><small>${(r.p * 100).toLocaleString('ru-RU')}%</small></div>`).join('')}</div>
           <p class="note">Яйцо — примерно раз в 3+ часа, если динозавра кормить, играть с ним и укладывать спать (нужно 5 дел заботы). Счастливые и легендарные динозавры чаще несут редкие. Забытое на земле яйцо через 20 минут само попадёт в корзину.</p>
+          <div class="btn-row" style="margin:4px 0 6px"><button class="chip" id="eg-code">🔑 Ввести подарочный код</button></div>
           <label class="lbl">🔁 Обмен</label>
           <div class="shop">${Life.TRADES.map(t => `<button class="shop-item" data-trade="${t.id}" ${can(t.give) ? '' : 'disabled'}><span class="big">${Life.costText(t.give)} → ${Life.costText(t.get)}</span><span class="s">${t.name}</span></button>`).join('')}</div>
           <label class="lbl">🎩 Шапки для динозавров</label>
           <div class="shop">${Life.HATS.map(h => { const c = Life.hatCost(L, h), ok = can(c) || (h.alt && can(h.alt)), have = L.hats[h.id] || 0; return `<button class="shop-item" data-hat="${h.id}" ${ok ? '' : 'disabled'}><span class="big">${DP.Scene.HATS[h.id]}</span><span class="t">${h.name}${have ? ` · есть ${have}` : ''}</span><span class="s">${Life.costText(c)}${h.alt ? ' или ' + Life.costText(h.alt) : ''}</span></button>`; }).join('')}</div>
           <label class="lbl">🌟 Легендарный динозавр</label>
           <button class="shop-item wide" id="eg-legend" ${(L.tokens.legend > 0 || can(Life.LEGEND_COST) || can(Life.LEGEND_ALT)) ? '' : 'disabled'}><span class="big">🌟🦖</span><span class="t">Золотой динозавр${L.tokens.legend > 0 ? ' · подарок ждёт!' : ''}</span><span class="s">${L.tokens.legend > 0 ? 'Бесплатно' : Life.costText(Life.LEGEND_COST) + ' или ' + Life.costText(Life.LEGEND_ALT)} · сияет и чаще несёт редкие яйца</span></button>`, (p) => {
-          UI.wire(p, { back: backTo });
+          UI.wire(p, { back: backTo }); const ec = p.querySelector("#eg-code"); if (ec) ec.onclick = () => go("gifts");
           p.querySelectorAll('[data-trade]').forEach(b => b.onclick = () => { if (Life.trade(park, b.dataset.trade)) { U.toast('🔁 Обмен состоялся!'); commit(); updateHud(); go('eggs'); } });
           p.querySelectorAll('[data-hat]').forEach(b => b.onclick = () => {
             const id = b.dataset.hat; if (!Life.buyHat(park, id)) return;
@@ -810,10 +851,11 @@
           ${waiting ? `<div class="note gift-wait">🎁 В парке лежит подарок (${waiting}) — найди коробку и нажми на неё!</div>` : ''}
           ${L.gifts.length ? `<div class="gift-list">${L.gifts.map(g => { const G = g.adm ? null : Life.GIFT[g.g]; return `<div class="gift"><span class="e">${G ? G.e : g.e || '🎁'}</span><div><b>${U.esc(G ? G.name : g.name || 'Подарок')}</b><div class="s">${g.adm ? '🎁 от ' + U.esc(g.from || 'Динопарка') + (g.msg ? ' — ' + U.esc(g.msg) : '') : 'от ' + U.esc(g.from || 'динозавра')}${G && G.r !== 'common' ? (G.r === 'epic' ? ' · ✨ очень редкий' : ' · 💎 редкий') : ''} · ${new Date(g.t).toLocaleDateString('ru-RU')}</div></div></div>`; }).join('')}</div>`
             : '<div class="empty"><div class="big">🎁</div>Пока подарков нет. Корми, играй и укладывай спать своих ⭐ динозавров — и когда-нибудь они отблагодарят тебя.</div>'}
-          <label class="lbl">🔑 Подарочный код</label>
-          <div class="btn-row" style="margin-top:0"><input class="field" id="gift-code" placeholder="DP1.…" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1" value="${U.esc(code || '')}"><button class="btn green" id="gift-redeem">Получить</button></div>
+          <label class="lbl" for="gift-code">🔑 Ввести код</label>
+          <div class="btn-row" style="margin-top:0"><input class="field" id="gift-code" placeholder="DINO-XXXX-XXXX" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done" style="flex:1" value="${U.esc(code || '')}"><button class="btn green" id="gift-redeem">Получить</button></div>
           <div class="note" id="gift-msg"></div>`, (p) => {
           UI.wire(p, { back: backTo });
+          p.querySelector('#gift-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') p.querySelector('#gift-redeem').click(); });
           p.querySelector('#gift-redeem').onclick = async () => {
             const msg = p.querySelector('#gift-msg'), btn = p.querySelector('#gift-redeem'); btn.disabled = true; msg.textContent = '⏳ Проверяем…';
             try { const r = await redeem(p.querySelector('#gift-code').value); msg.textContent = `✓ Получено: ${Life.giftEmoji(r.g)} ${Life.giftName(r.g)}${r.m ? ' — ' + r.m : ''}`; msg.className = 'note ok'; setTimeout(() => { if (current === 'gifts') go('gifts'); }, 1600); }
@@ -1027,5 +1069,5 @@
   else if (park.dinos.length && !localStorage.getItem('dp_news_v3')) go('news');
   v3Start();
   if (window.DPBOOT) window.DPBOOT.ready = true; // загрузчик (js/boot.js): страница запустилась
-  window.dpPark = { get park() { return park; }, screens, processPhoto, feedAll, feedSecret, travelTo, newDino, commit, mode, owner: ME, demo: DEMO, lifeTick, pickup, startHide, closeUp, playAll, sleepAll, redeem, doShare, lifeEvents };
+  window.dpPark = { get park() { return park; }, screens, redeem, feedGifts, processPhoto, feedAll, feedSecret, travelTo, newDino, commit, mode, owner: ME, demo: DEMO, lifeTick, pickup, startHide, closeUp, playAll, sleepAll, redeem, doShare, lifeEvents };
 })().catch(function (e) { if (window.DPBOOT && window.DPBOOT.fail) window.DPBOOT.fail(e, 'запуск'); else throw e; });

@@ -21,6 +21,27 @@
     .adm .st { font-size: 14px; opacity: .9; margin: 6px 0; } .adm .warn { color: #ffd27a; } .adm .ok { color: #8ff0b5; } .adm .bad { color: #ff9a9a; }
     .adm .code { word-break: break-all; font-family: ui-monospace, monospace; font-size: 11px; background: rgba(0,0,0,.3); padding: 8px; border-radius: 8px; margin: 6px 0; }
     .adm .hint { background: rgba(255,210,122,.12); border-radius: 10px; padding: 8px 10px; }
+    .adm details { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 16px; margin: 14px 0; padding: 0 14px; }
+    .adm details > summary { cursor: pointer; padding: 14px 0; font-weight: 800; font-size: 16px; list-style: none; }
+    .adm details > summary::-webkit-details-marker { display: none; }
+    .adm details > summary::before { content: '▸ '; } .adm details[open] > summary::before { content: '▾ '; }
+    .adm details[open] { padding-bottom: 14px; }
+    .adm .big { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 14px; }
+    .adm .bigbtn { display: block; width: 100%; text-align: left; padding: 16px 18px; border-radius: 16px; border: 2px solid rgba(255,255,255,.18); background: rgba(46,196,140,.18); color: inherit; font: inherit; font-size: 19px; font-weight: 900; cursor: pointer; }
+    .adm .bigbtn small { display: block; font-size: 13px; font-weight: 600; opacity: .85; margin-top: 3px; }
+    .adm .bigbtn.on { border-color: #8ff0b5; background: rgba(46,196,140,.32); }
+    .adm .bigbtn:disabled { opacity: .5; }
+    .adm .opt { background: rgba(0,0,0,.2); border-radius: 14px; padding: 12px; margin-top: 0; }
+    .adm .radio { display: flex; gap: 8px; flex-wrap: wrap; } .adm .radio label { flex: 1 1 200px; margin: 0; background: rgba(255,255,255,.06); border-radius: 12px; padding: 10px; font-weight: 700; }
+    .adm .radio input { width: auto; margin-right: 6px; }
+    .adm .banner { border-radius: 14px; padding: 12px 14px; margin: 12px 0; font-weight: 700; line-height: 1.4; }
+    .adm .banner.bad { background: rgba(255,90,90,.18); border: 1px solid rgba(255,120,120,.5); color: #ffd0d0; }
+    .adm .banner.warn { background: rgba(255,210,122,.15); border: 1px solid rgba(255,210,122,.45); color: #ffe7b0; }
+    .adm .result { background: rgba(0,0,0,.28); border-radius: 14px; padding: 12px; margin: 10px 0; }
+    .adm .short { font-family: ui-monospace, Menlo, monospace; font-size: 26px; font-weight: 900; letter-spacing: 1px; user-select: all; -webkit-user-select: all; margin: 4px 0; }
+    .adm .sent { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.08); font-size: 14px; } .adm .sent > div { flex: 1; }
+    .adm .danger { border-top: 1px dashed rgba(255,120,120,.4); margin-top: 12px; padding-top: 10px; }
+    .adm ol { padding-left: 20px; margin: 6px 0; } .adm ol li { margin: 4px 0; font-size: 14px; }
     #adm-toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: #123d3a; color: #eafff5; border: 1px solid rgba(255,255,255,.25); padding: 10px 16px; border-radius: 12px; font-weight: 700; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50; max-width: 90vw; text-align: center; }
     #adm-toast.on { opacity: 1; transform: translate(-50%, 0); }
   </style>
@@ -28,26 +49,10 @@
 <body>
   <main class="adm">
     <h1>🎁 Подарки игрокам</h1>
-    <div class="st">Служебная страница. Ключ подписи хранится только в этом браузере (localStorage). Не открывай её на чужих устройствах.</div>
+    <div id="warn"></div>
 
-    <section>
-      <h2>🔑 Ключ подписи</h2>
-      <div class="st" id="key-st">…</div>
-      <div class="btns">
-        <button class="btn small" id="key-gen">Создать новый ключ</button>
-        <button class="btn small ghost" id="key-export">Сохранить копию ключа (Поделиться)</button>
-        <button class="btn small ghost" id="key-copy">Скопировать закрытый ключ</button>
-        <button class="btn small ghost" id="key-forget">Удалить из браузера</button>
-      </div>
-      <div class="st hint" id="key-hint">🔒 Закрытый ключ <b>никому не отправляй</b>. Сохрани копию в «Файлы» или в Заметки (и закрепи) — без неё новые коды не сделать.</div>
-      <label for="key-in">Импорт закрытого ключа (JWK)</label>
-      <textarea id="key-in" placeholder='{"kty":"EC","crv":"P-256",...}' autocomplete="off" spellcheck="false"></textarea>
-      <div class="btns"><button class="btn small" id="key-import">Импортировать</button></div>
-      <div class="st" id="key-pub-wrap" hidden>Открытый ключ для <b>js/config.js</b> → ADMIN_PUBLIC_KEY:<div class="code" id="key-pub"></div><button class="btn small" id="key-pub-copy">📋 Скопировать открытый ключ</button></div>
-    </section>
-
-    <section>
-      <h2>🎟️ Подарочные коды</h2>
+    <section id="gift-sec">
+      <h2>1. Что подарить</h2>
       <div class="row">
         <div><label for="g-kind">Подарок</label>
           <select id="g-kind">
@@ -55,25 +60,83 @@
           </select></div>
         <div data-for="eggs"><label for="g-r">Редкость</label>
           <select id="g-r"><option value="common">Обычные 🥚</option><option value="rare">Редкие 💎</option><option value="epic">Очень редкие 🔮</option><option value="legend">Легендарные 🌟</option></select></div>
-        <div data-for="eggs"><label for="g-q">Сколько (1–50)</label><input id="g-q" type="number" min="1" max="50" value="3"></div>
+        <div data-for="eggs"><label for="g-q">Сколько (1–50)</label><input id="g-q" type="number" inputmode="numeric" min="1" max="50" value="3"></div>
         <div data-for="hat" hidden><label for="g-h">Шапка</label>
           <select id="g-h"><option value="cap">Кепка</option><option value="bow">Бантик</option><option value="flower">Цветочек</option><option value="sunhat">Шляпка</option><option value="helmet">Каска</option><option value="grad">Шапочка учёного</option><option value="tophat">Цилиндр</option><option value="crown">Корона</option></select></div>
         <div data-for="item" hidden><label for="g-e">Эмодзи</label><input id="g-e" maxlength="8" value="🧸"></div>
         <div data-for="item" hidden><label for="g-t">Название</label><input id="g-t" maxlength="40" value="Плюшевый динозаврик"></div>
       </div>
-      <label for="g-msg">Сообщение (необязательно)</label><input id="g-msg" maxlength="140" placeholder="Спасибо, что играешь!">
-      <div class="row">
-        <div><label for="g-park">Только для парка (код, необязательно)</label><input id="g-park" maxlength="16" placeholder="любой парк"></div>
-        <div><label for="g-days">Действует дней (0 — бессрочно)</label><input id="g-days" type="number" min="0" max="365" value="30"></div>
-        <div><label for="g-n">Сколько кодов</label><input id="g-n" type="number" min="1" max="50" value="1"></div>
+      <label for="g-msg">Сообщение игроку (необязательно)</label><input id="g-msg" maxlength="140" placeholder="Спасибо, что играешь!">
+      <label for="g-days">Сколько дней действует (0 — всегда)</label><input id="g-days" type="number" inputmode="numeric" min="0" max="365" value="30">
+
+      <h2 style="margin-top:18px">2. Как отправить</h2>
+      <div class="big">
+        <button type="button" class="bigbtn" id="b-code">🎟️ Сделать код<small>Короткий код DINO-XXXX-XXXX и ссылка — игрок вводит код в «🎁 Подарки»</small></button>
+        <div class="opt" id="opt-code" hidden>
+          <div class="radio">
+            <label><input type="radio" name="g-use" value="once" checked>Одноразовый — для одного игрока</label>
+            <label><input type="radio" name="g-use" value="multi">Для всех, кто знает код — например, в посте «простите за ошибку» (каждый парк — один раз)</label>
+          </div>
+          <div id="g-n-wrap"><label for="g-n">Сколько кодов</label><input id="g-n" type="number" inputmode="numeric" min="1" max="20" value="1"></div>
+          <div class="btns"><button class="btn" id="g-make">Создать код</button></div>
+        </div>
+        <button type="button" class="bigbtn" id="b-all">📣 Отправить всем<small>Каждый парк получит подарок один раз — когда его откроют</small></button>
+        <button type="button" class="bigbtn" id="b-park">🎯 Сюрприз одному парку<small>При открытии парк увидит «🎁 Тебе подарок!»</small></button>
+        <div class="opt" id="opt-park" hidden>
+          <label for="g-park">Код парка (из «Мои парки» игрока)</label><input id="g-park" maxlength="16" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="например, ab12cd34ef">
+          <div class="btns"><button class="btn" id="g-park-send">Отправить сюрприз</button></div>
+        </div>
       </div>
-      <div class="btns"><button class="btn" id="g-make">Создать коды</button><button class="btn small ghost" id="g-copy" hidden>Скопировать все ссылки</button></div>
       <div id="g-out"></div>
+      <div class="btns"><button class="btn small ghost" id="g-copy" hidden>Скопировать все коды и ссылки</button></div>
     </section>
 
-    <section>
-      <h2>📡 Выдать сразу через сервер</h2>
-      <div class="st">Если парк работает на своём сервере (server/server.js с переменной ADMIN_TOKEN) — подарок придёт в парк сам, без кода.</div>
+    <details id="sent-sec">
+      <summary>📋 Отправленные подарки</summary>
+      <div class="st">То, что опубликовано сейчас. «Отменить» — подарок больше никто не получит (кто уже получил — у того останется).</div>
+      <div id="sent-list" class="st">…</div>
+      <div class="btns"><button class="btn small ghost" id="sent-reload">Обновить</button></div>
+    </details>
+
+    <details id="gh-sec">
+      <summary>☁️ Публикация — настроить один раз</summary>
+      <div class="st" id="gh-st">…</div>
+      <div class="st">Подарки сразу уходят на серверы сообщений, но те могут их забыть. Чтобы подарки хранились надёжно, страница записывает их в файл <b>gifts/feed.json</b> сайта на GitHub. Для этого нужен ключ доступа GitHub (токен) — он хранится только в этом браузере.</div>
+      <ol>
+        <li>Открой <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com → Settings → Fine-grained tokens → Generate new token</a> (войди в аккаунт, где лежит сайт).</li>
+        <li>Token name: <b>Динопарк подарки</b>. Expiration: <b>1 год</b> (или дольше).</li>
+        <li>Repository access: <b>Only select repositories</b> → выбери <b id="gh-repo-name">dino-park</b>.</li>
+        <li>Permissions → Repository permissions → <b>Contents: Read and write</b>. Больше ничего не включай.</li>
+        <li>Нажми <b>Generate token</b>, скопируй его (начинается с github_pat_) и вставь сюда:</li>
+      </ol>
+      <label for="gh-token">Токен GitHub</label><input id="gh-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…">
+      <label for="gh-repo">Репозиторий</label><input id="gh-repo" autocapitalize="off" autocomplete="off" spellcheck="false">
+      <div class="btns"><button class="btn" id="gh-save">Сохранить и проверить</button><button class="btn small ghost" id="gh-forget">Удалить токен</button></div>
+      <div class="st" id="gh-msg"></div>
+    </details>
+
+    <details id="key-sec">
+      <summary>🔑 Ключ (не трогать)</summary>
+      <div class="st" id="key-st">…</div>
+      <div class="btns">
+        <button class="btn small ghost" id="key-export">Сохранить копию ключа (Поделиться)</button>
+        <button class="btn small ghost" id="key-copy">Скопировать закрытый ключ</button>
+      </div>
+      <div class="st hint" id="key-hint">🔒 Закрытый ключ <b>никому не отправляй</b>. Сохрани копию в «Файлы» или в Заметки (и закрепи) — без неё новые коды не сделать.</div>
+      <label for="key-in">Импорт закрытого ключа (JWK)</label>
+      <textarea id="key-in" placeholder='{"kty":"EC","crv":"P-256",...}' autocomplete="off" spellcheck="false"></textarea>
+      <div class="btns"><button class="btn small" id="key-import">Импортировать</button></div>
+      <div class="st" id="key-pub-wrap" hidden>Открытый ключ для <b>js/config.js</b> → ADMIN_PUBLIC_KEY:<div class="code" id="key-pub"></div><button class="btn small" id="key-pub-copy">📋 Скопировать открытый ключ</button></div>
+      <div class="danger">
+        <div class="st bad">Опасно: после этих кнопок старые подарки и коды могут перестать работать.</div>
+        <div class="btns"><button class="btn small ghost" id="key-gen">Создать новый ключ</button><button class="btn small ghost" id="key-forget">Удалить из браузера</button></div>
+      </div>
+    </details>
+
+    <details id="more-sec">
+      <summary>Дополнительно</summary>
+      <h2>📡 Выдать сразу через свой сервер</h2>
+      <div class="st">Только если парк работает на своём сервере (server/server.js с переменной ADMIN_TOKEN). Для сайта на GitHub Pages не нужно.</div>
       <div class="row">
         <div><label for="s-url">Адрес сервера</label><input id="s-url" placeholder="https://мой-сервер"></div>
         <div><label for="s-token">ADMIN_TOKEN</label><input id="s-token" type="password" autocomplete="off"></div>
@@ -81,9 +144,11 @@
       <label for="s-parks">Коды парков через запятую или * для всех</label><input id="s-parks" placeholder="abc123, def456">
       <div class="btns"><button class="btn" id="s-send">Отправить подарок (из формы выше)</button></div>
       <div class="st" id="s-msg"></div>
-    </section>
+    </details>
   </main>
   <script src="js/config.js"></script>
+  <script src="js/relay.js"></script>
+  <script src="js/gifts.js"></script>
   <script src="js/admin.js"></script>
 </body>
 </html>

@@ -56,7 +56,7 @@ const MIME = {
 };
 // Белый список того, что можно отдавать по HTTP
 const PAGES = new Set(['/index.html', '/park.html', '/tv.html', '/viewer.html', '/coloring.html', '/parks.html', '/admin.html', '/LICENSE', '/robots.txt']);
-const PREFIXES = ['/css/', '/js/', '/assets/', '/legacy/'];
+const PREFIXES = ['/css/', '/js/', '/assets/', '/legacy/', '/gifts/'];
 const ALIASES = { '/': '/index.html', '/tv': '/tv.html', '/tv/': '/tv.html', '/park': '/park.html', '/parks': '/parks.html', '/coloring': '/coloring.html', '/legacy': '/legacy/index.html', '/legacy/': '/legacy/index.html' };
 
 const ID_RE = /^[a-z0-9]{6,16}$/;

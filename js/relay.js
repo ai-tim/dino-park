@@ -102,6 +102,7 @@ window.DP = window.DP || {};
       var tl = (body[0] << 8) | body[1], topic = unutf8(body.subarray(2, 2 + tl)), qos = (h >> 1) & 3, off = 2 + tl + (qos ? 2 : 0);
       if (qos === 1) self.raw(new Uint8Array([0x40, 2, body[2 + tl], body[3 + tl]]));
       var payload; try { payload = unutf8(body.subarray(off)); } catch (e) { return; }
+      if (self.hub.rawIn(topic, payload)) return;
       self.hub.incoming(topic, payload);
     }
   };
@@ -111,14 +112,35 @@ window.DP = window.DP || {};
   Conn.prototype.sub = function (t) { this.subs[t] = 1; this.sendSub(t); };
   Conn.prototype.unsub = function (t) { delete this.subs[t]; if (this.open) this.raw(packet(0xA2, concat([this.nextId(), str16(t)]))); };
   Conn.prototype.pub = function (t, s) { return this.open && this.raw(packet(0x30, concat([str16(t), utf8(s)]))); };
+  Conn.prototype.pubRetained = function (t, s) { return this.open && this.raw(packet(0x31, concat([str16(t), utf8(s)]))); };
   Conn.prototype.stop = function () { this.stopped = true; clearTimeout(this.rt); clearInterval(this.ping); if (this.ws) { try { this.ws.close(); } catch (e) { /* ignore */ } } };
 
   // ———————————————— «хаб»: несколько брокеров, нарезка больших сообщений, отбрасывание повторов ————————————————
   var Hub = {
     conns: [], topics: {}, parts: {}, seen: {}, waiters: [], listeners: [],
+    // «сырые» подписки по шаблону 'a/b/+' или 'a/#' (без нарезки DP4) — для подписанной ленты подарков (retained-сообщения)
+    raws: [],
+    rawIn: function (t, s) {
+      var hit = false;
+      Hub.raws.forEach(function (r) { if (r.re.test(t)) { hit = true; try { r.fn(s, t); } catch (e) { console.error(e); } } });
+      return hit;
+    },
+    subRaw: function (filter, fn) {
+      Hub.start();
+      var re = new RegExp('^' + filter.replace(/[.*?^${}()|[\]\\]/g, '\\$&').replace(/\+/g, '[^/]+').replace(/#$/, '.*') + '$');
+      var r = { filter: filter, re: re, fn: fn }; Hub.raws.push(r); Hub.conns.forEach(function (c) { c.sub(filter); });
+      return function () { Hub.raws = Hub.raws.filter(function (x) { return x !== r; }); if (!Hub.raws.some(function (x) { return x.filter === filter; })) Hub.conns.forEach(function (c) { c.unsub(filter); }); };
+    },
+    /** Опубликовать с флагом retain на всех брокерах; '' — удалить сохранённое сообщение. Возвращает число брокеров, куда ушло */
+    retain: function (t, s) { Hub.start(); var n = 0; Hub.conns.forEach(function (c) { if (c.pubRetained(t, s)) n++; }); return n; },
+    /** Закрыть все соединения (лента подарков открывает брокеры ненадолго, если ТВ не подключены) */
+    stop: function () { Hub.conns.forEach(function (c) { c.stop(); }); Hub.conns = []; },
+    /** Кто-то ещё пользуется брокерами (ТВ, сопряжение)? */
+    inUse: function () { return Object.keys(Hub.topics).some(function (k) { return Hub.topics[k] && Hub.topics[k].length; }) || Hub.listeners.length > 0 || Hub.waiters.length > 0; },
     start: function () {
       if (Hub.conns.length) return;
       Hub.conns = brokers().map(function (b) { return new Conn(b, Hub); });
+      if (Hub._vis) return; Hub._vis = true;
       document.addEventListener('visibilitychange', function () { // iOS рвёт сокеты в фоне — по возвращении переподключаемся сразу
         if (document.hidden) return;
         Hub.conns.forEach(function (c) {
@@ -408,7 +430,7 @@ window.DP = window.DP || {};
     supported: supported, selfTest: selfTest, hub: Hub, brokers: brokers, DEFAULT_BROKERS: DEFAULT_BROKERS, CODE_TTL: CODE_TTL,
     host: function (parkId) { return hosts[parkId] || (hosts[parkId] = new Host(parkId)); },
     viewer: function () { return DP.relay._v || (DP.relay._v = new Viewer()); },
-    savedTv: Viewer.saved, _hosts: hosts,
+    savedTv: Viewer.saved, _hosts: hosts, subRaw: Hub.subRaw, retain: Hub.retain,
     _t: { fnv: fnv, strip: strip }
   };
 })();

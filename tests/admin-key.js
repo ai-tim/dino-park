@@ -18,6 +18,9 @@ const results = []; const ok = (n, c, i) => { results.push(!!c); console.log((c 
   }, JSON.stringify(pre));
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(BASE + '/admin.html'); await p.waitForTimeout(400);
+  ok('раздел «Ключ (не трогать)» свёрнут, опасные кнопки скрыты', !(await p.isVisible('#key-export')) && !(await p.isVisible('#key-gen')) && /не трогать/.test(await p.textContent('#key-sec summary')));
+  ok('нет предупреждений — ключ совпадает', (await p.textContent('#warn')).trim() === '', await p.textContent('#warn'));
+  await p.tap('#key-sec summary'); await p.waitForTimeout(200);
   const vis = { exp: await p.isVisible('#key-export'), copy: await p.isVisible('#key-copy'), pub: await p.isVisible('#key-pub-copy') };
   ok('кнопки есть', vis.exp && vis.copy && vis.pub, JSON.stringify(vis) + ' ' + (await p.textContent('#key-st')));
   ok('подпись кнопки экспорта', /Поделиться/.test(await p.textContent('#key-export')));
@@ -39,6 +42,10 @@ const results = []; const ok = (n, c, i) => { results.push(!!c); console.log((c 
   await p.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); window.__ec = 0; const o = document.execCommand.bind(document); document.execCommand = (c) => { window.__ec++; window.__sel = document.activeElement && document.activeElement.value; return o(c); }; });
   await p.tap('#key-copy'); await p.waitForTimeout(200);
   ok('fallback execCommand(copy)', await p.evaluate(() => window.__ec === 1 && JSON.parse(window.__sel).d === 'TEST_D_VALUE_NOT_REAL'));
+  // «Создать новый ключ» и «Удалить» — за подтверждением; «Отмена» ничего не меняет
+  const dl = []; p.on('dialog', (d) => { dl.push(d.message()); d.dismiss(); });
+  await p.tap('#key-gen'); await p.waitForTimeout(200); await p.tap('#key-forget'); await p.waitForTimeout(200);
+  ok('опасные кнопки спрашивают подтверждение', dl.length === 2 && /НОВЫЙ ключ/.test(dl[0]) && /Удалить ключ/.test(dl[1]), dl.length + '');
   ok('localStorage не изменён', (await p.evaluate(() => localStorage.getItem('dp_admin_key'))) === JSON.stringify(pre));
   ok('без ошибок страницы', !errs.length, errs.join('; '));
   await browser.close();
