@@ -34,11 +34,36 @@ window.DP = window.DP || {};
     g.applyMatrix4(m); return g;
   }
   /** Неровность: сдвиг вершин по шуму от их положения (совпадающие вершины сдвигаются одинаково — без дыр) */
-  function jitter(g, amt, seed) {
+  function jitter(g, amt, seed, flat) {
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), k = (seed || 0) * 13.1; p.setXYZ(i, x + (hash2(x * 9 + k, y * 7 + z * 3) - 0.5) * amt, y + (hash2(y * 9 + k, z * 7 + x * 3) - 0.5) * amt, z + (hash2(z * 9 + k, x * 7 + y * 3) - 0.5) * amt); }
-    g.computeVertexNormals(); return g;
+    return flat ? (g.computeVertexNormals(), g) : smoothN(g);
   }
+  /** Гладкие нормали: усредняем нормали граней по совпадающим точкам (без «гранёного» low-poly вида) */
+  function smoothN(g) {
+    g = g.index ? g.toNonIndexed() : g;
+    const p = g.attributes.position, n = p.count, acc = new Map(), keys = new Array(n), N = new Float32Array(n * 3);
+    const q = (v) => Math.round(v * 1e4);
+    for (let i = 0; i < n; i += 3) {
+      const ax = p.getX(i), ay = p.getY(i), az = p.getZ(i), ux = p.getX(i + 1) - ax, uy = p.getY(i + 1) - ay, uz = p.getZ(i + 1) - az, vx = p.getX(i + 2) - ax, vy = p.getY(i + 2) - ay, vz = p.getZ(i + 2) - az;
+      const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx; // площадь — вес
+      for (let k = 0; k < 3; k++) { const j = i + k, key = q(p.getX(j)) + ',' + q(p.getY(j)) + ',' + q(p.getZ(j)); keys[j] = key; let a = acc.get(key); if (!a) acc.set(key, a = [0, 0, 0]); a[0] += cx; a[1] += cy; a[2] += cz; }
+    }
+    for (let j = 0; j < n; j++) { const a = acc.get(keys[j]), l = Math.hypot(a[0], a[1], a[2]) || 1; N[j * 3] = a[0] / l; N[j * 3 + 1] = a[1] / l; N[j * 3 + 2] = a[2] / l; }
+    g.setAttribute('normal', new (T().BufferAttribute)(N, 3)); return g;
+  }
+  /** Пышность: радиальный сдвиг вершин сферы по плавному 3D-шуму (комки листвы/камня), центр в начале координат */
+  function lumpy(g, amt, freq, seed) {
+    const p = g.attributes.position, k = (seed || 0) * 7.31;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i), l = Math.hypot(x, y, z) || 1, X = x / l * freq, Y = y / l * freq, Z = z / l * freq;
+      const nn = (noise2(X + k, Y) + noise2(Y + 3.1, Z + k) + noise2(Z + k * 0.7, X + 5.3)) / 3 * 0.7 + (noise2(X * 2.3 + k, Z * 2.3) - 0.5) * 0.3;
+      const f = 1 + amt * (nn - 0.5) * 2; p.setXYZ(i, x * f, y * f, z * f);
+    }
+    return g;
+  }
+  /** Плавный градиент по палитре: t 0…1 → цвет (в tmp) */
+  function grad(cols, t, tmp) { t = Math.max(0, Math.min(0.9999, t)) * (cols.length - 1); const i = Math.floor(t), f = t - i, a = C(cols[i]), b = C(cols[Math.min(cols.length - 1, i + 1)]); return tmp.copy(a).lerp(b, f * f * (3 - 2 * f)); }
   /** Склеить несколько раскрашенных геометрий в одну (один вызов отрисовки) */
   function merge(list) {
     const THREE = T(); let n = 0; const gs = list.filter(Boolean).map(g => { g = g.index ? g.toNonIndexed() : g; if (!g.attributes.normal) g.computeVertexNormals(); n += g.attributes.position.count; return g; });
@@ -84,24 +109,71 @@ window.DP = window.DP || {};
   function freeTextures() { Object.keys(texCache).forEach(k => { texCache[k].dispose(); delete texCache[k]; }); }
   /** Материал с ветром: верх геометрии покачивается (amp — сила, по высоте в квадрате) */
   const TIME = { value: 0 };
-  function windMat(amp, opts) {
-    const THREE = T(), m = new THREE.MeshLambertMaterial(Object.assign({ vertexColors: true, side: THREE.DoubleSide }, opts || {}));
+  /** Процедурная детализация в шейдере (без текстур — память iPhone не растёт):
+   *  ground — пятна/мелкая неровность земли, leaf — комки листвы + кора (по цвету), rock — прожилки камня.
+   *  Цвет слегка «дышит» по 3D-шуму в мировых координатах, нормаль возмущается по производным (bump) и гаснет вдали. */
+  const NOISE = `varying vec3 vDpW;
+    float dpH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+    float dpN(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(mix(dpH(i), dpH(i + vec3(1, 0, 0)), f.x), mix(dpH(i + vec3(0, 1, 0)), dpH(i + vec3(1, 1, 0)), f.x), f.y),
+                 mix(mix(dpH(i + vec3(0, 0, 1)), dpH(i + vec3(1, 0, 1)), f.x), mix(dpH(i + vec3(0, 1, 1)), dpH(i + vec3(1, 1, 1)), f.x), f.y), f.z); }`;
+  const DETAIL = {
+    ground: `float dpA = dpN(dpP * 0.09) * 0.55 + dpN(dpP * 0.31) * 0.45, dpB = dpN(dpP * 2.3), dpC = dpN(dpP * 8.3);
+      float dpG = dot(diffuseColor.rgb, vec3(0.3, 0.55, 0.15));
+      diffuseColor.rgb = mix(vec3(dpG), diffuseColor.rgb, 0.86); // чуть менее «кислотная» земля
+      diffuseColor.rgb *= 0.78 + 0.42 * dpA + ((dpB - 0.5) * 0.2 + (dpC - 0.5) * 0.16) * dpFade;
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.14, 1.0, 0.78), smoothstep(0.55, 0.78, dpA) * 0.65);
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.86, 1.04, 0.9), smoothstep(0.45, 0.2, dpA) * 0.5);
+      float dpBH = dpB * 0.07 + dpC * 0.03;`,
+    leaf: `float dpBark = step(vColor.g * 1.04, vColor.r) * step(0.02, vColor.r - vColor.b);
+      float dpA = dpN(dpP * 2.6), dpL = smoothstep(0.3, 0.78, dpN(dpP * 6.5 + dpA)), dpB = dpN(dpP * 17.0), dpS = dpN(dpP * vec3(10.0, 1.3, 10.0));
+      diffuseColor.rgb *= mix((0.56 + 0.26 * dpA + 0.52 * dpL) * (1.0 + (dpB - 0.5) * 0.36 * dpFade), 0.62 + 0.6 * dpS, dpBark);
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.1, 1.06, 0.82), (1.0 - dpBark) * smoothstep(0.62, 0.9, dpA) * 0.5);
+      float dpBH = mix(dpL * 0.1 + dpB * 0.02, dpS * 0.06, dpBark);`,
+    rock: `float dpA = dpN(dpP * 1.4), dpB = dpN(dpP * 4.6), dpC = dpN(dpP * 13.0);
+            diffuseColor.rgb *= 0.7 + 0.42 * dpA + (dpB - 0.5) * 0.26 + (dpC - 0.5) * 0.18 * dpFade;
+      float dpBH = dpA * 0.08 + dpB * 0.05 + dpC * 0.015;`
+  };
+  const BUMP = `{ vec2 dH = vec2(dFdx(dpBH), dFdy(dpBH)) * dpFade * DPBS;
+      vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition), R1 = cross(sy, normal), R2 = cross(normal, sx);
+      float det = dot(sx, R1) * faceDirection; vec3 gr = sign(det) * (dH.x * R1 + dH.y * R2);
+      normal = normalize(abs(det) * normal - gr); }`;
+  const detailOn = () => { const v = new URLSearchParams(location.search).get('detail'); return v !== '0'; };
+  function detail(m, kind, amp, bs) {
+    const useD = kind && detailOn(), k = (bs == null ? 1 : bs);
     m.onBeforeCompile = (sh) => {
-      sh.uniforms.uTime = TIME;
-      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      if (amp) sh.uniforms.uTime = TIME;
+      let vs = sh.vertexShader, fs = sh.fragmentShader;
+      if (amp) vs = 'uniform float uTime;\n' + vs.replace('#include <begin_vertex>', `#include <begin_vertex>
         float wh = max(position.y, 0.0);
         #ifdef USE_INSTANCING
           vec2 wp = vec2(instanceMatrix[3][0], instanceMatrix[3][2]);
         #else
           vec2 wp = vec2(modelMatrix[3][0], modelMatrix[3][2]);
         #endif
-        float ww = (sin(uTime * 1.7 + wp.x * 0.31 + wp.y * 0.17) + 0.45 * sin(uTime * 3.1 + wp.x * 0.7)) * ${amp.toFixed(4)} * wh * wh;
+        float ww = (sin(uTime * 1.7 + wp.x * 0.31 + wp.y * 0.17) + 0.45 * sin(uTime * 3.1 + wp.x * 0.7)) * ${(amp || 0).toFixed(4)} * wh * wh;
         transformed.x += ww; transformed.z += ww * 0.35;`);
+      if (useD) {
+        vs = 'varying vec3 vDpW;\n' + vs.replace('#include <project_vertex>', `#include <project_vertex>
+          { vec4 dpw = vec4(transformed, 1.0);
+          #ifdef USE_INSTANCING
+            dpw = instanceMatrix * dpw;
+          #endif
+          vDpW = (modelMatrix * dpw).xyz; }`);
+        fs = NOISE + '\n' + fs.replace('#include <color_fragment>', `#include <color_fragment>
+          vec3 dpP = vDpW; float dpFade = 1.0 - smoothstep(18.0, 60.0, length(vViewPosition));
+          ${DETAIL[kind]}`).replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + BUMP.replace('DPBS', (k * 1.0).toFixed(3)));
+      }
+      sh.vertexShader = vs; sh.fragmentShader = fs;
     };
-    m.customProgramCacheKey = () => 'wind' + amp;
+    m.customProgramCacheKey = () => 'dp' + (amp || 0) + (useD ? kind + k : '');
     return m;
   }
-  DP.G3 = { rng, noise2, fbm, C, paint, place, jitter, merge, cyl, cone, blob, frond, blade, radialTex, canvasTex, windMat, TIME, freeTextures };
+  function windMat(amp, opts, kind, bs) {
+    const THREE = T(), m = new THREE.MeshLambertMaterial(Object.assign({ vertexColors: true, side: THREE.DoubleSide }, opts || {}));
+    return detail(m, kind, amp, bs);
+  }
+  DP.G3 = { rng, noise2, fbm, C, paint, place, jitter, smoothN, lumpy, grad, detail, merge, cyl, cone, blob, frond, blade, radialTex, canvasTex, windMat, TIME, freeTextures };
 
   // ——— растения и камни (единичный размер; масштаб задаёт экземпляр) ———
   const QL = () => (DP.Scene && DP.Scene.PERF && DP.Scene.PERF.quality) || 'high';
@@ -115,55 +187,62 @@ window.DP = window.DP || {};
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
   }
+  /** Цвет листвы: светлее сверху/к солнцу, темнее снизу и внутри кроны (мягкое «затенение» без текстур) */
+  const leafC = (cols, cy, s, sh) => (px, py, pz, nx, ny, nz, t) => { grad(cols, 0.12 + 0.62 * (ny * 0.5 + 0.5) + (sh || 0), t); return t.multiplyScalar(0.74 + 0.3 * Math.max(0, Math.min(1, (py - cy + s) / (2 * s)))); };
+  const barkC = (L, h, dark) => (px, py, pz, nx, ny, nz, t) => { t.copy(C(L.barkD || L.bark)).lerp(C(L.bark), Math.min(1, py / h * (dark ? 0.6 : 1) + 0.15)); return t.multiplyScalar(0.8 + 0.2 * Math.max(0, nx * 0.6 + nz * 0.4 + 0.4)); };
   const KIT = {
-    tree(L, r) { // лиственное дерево: ствол и пышная крона из «комков»
-      const parts = [paint(jitter(cyl(0.16, 0.3, 2.3, 6), 0.08, 1), L.bark)];
-      [[0, 2.7, 0, 1.25], [0.75, 2.35, 0.25, 0.9], [-0.7, 2.4, -0.2, 0.95], [0.15, 3.3, -0.15, 0.85], [-0.2, 2.5, 0.7, 0.8]].forEach(([x, y, z, s], i) => {
-        parts.push(paint(jitter(place(blob(s, HI() ? 2 : 1), x, y, z), HI() ? 0.16 : 0.22, i + 2), (px, py, pz, nx, ny) => C(L.leaf[Math.min(L.leaf.length - 1, (ny > 0.35 ? 2 : ny > -0.2 ? 1 : 0) + (i % 2))])));
-      });
+    tree(L, r) { // лиственное дерево: ствол с ветвями и пышная гладкая крона из «комков» листвы
+      const d = HI() ? 3 : 2, cr = [[0, 2.7, 0, 1.25], [0.75, 2.35, 0.25, 0.9], [-0.7, 2.4, -0.2, 0.95], [0.15, 3.3, -0.15, 0.85], [-0.2, 2.5, 0.7, 0.8]];
+      const parts = [paint(jitter(cyl(0.16, 0.3, 2.3, LO() ? 8 : 12), 0.04, 1), barkC(L, 2.3))];
+      cr.slice(1).forEach(([x, y, z], i) => { const g = cyl(0.05, 0.1, Math.hypot(x, y - 1.7, z), LO() ? 5 : 7); const a = Math.atan2(z, x); place(g, 0, 1.6, 0, Math.sin(a) * Math.atan2(Math.hypot(x, z), y - 1.6), 0, -Math.cos(a) * Math.atan2(Math.hypot(x, z), y - 1.6)); parts.push(paint(smoothN(g), L.bark)); void i; });
+      cr.forEach(([x, y, z, s], i) => parts.push(paint(smoothN(place(lumpy(blob(s, d), 0.2, 2.4, i + 2), x, y, z)), leafC(L.leaf, y, s, (i % 2) * 0.1))));
       return merge(parts);
     },
     tree2(L, r) { // высокое дерево с ярусами зонтичной кроны (как гинкго/акация) и корнями-подпорками
-      const parts = [paint(jitter(cyl(0.12, 0.24, 3.2, 7), 0.05, 3), L.barkD || L.bark)];
-      for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + 0.4, g = cyl(0.03, 0.07, 0.75, 4); place(g, Math.cos(a) * 0.18, 0, Math.sin(a) * 0.18, Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); parts.push(paint(g, L.bark)); }
+      const d = HI() ? 3 : 2, parts = [paint(jitter(cyl(0.12, 0.24, 3.2, LO() ? 8 : 12), 0.03, 3), barkC(L, 3.2, true))];
+      for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + 0.4, g = cyl(0.03, 0.07, 0.75, 5); place(g, Math.cos(a) * 0.18, 0, Math.sin(a) * 0.18, Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); parts.push(paint(smoothN(g), L.bark)); }
       [[0, 3.3, 0, 1.6, 0.42], [0.35, 2.55, 0.2, 1.15, 0.36], [-0.3, 2.8, -0.25, 1.05, 0.34], [0.1, 3.85, 0, 0.95, 0.38]].forEach(([x, y, z, s, fl], i) => {
-        parts.push(paint(jitter(place(blob(s, HI() ? 2 : 1), x, y, z, 0, i, 0, 1, fl, 1), 0.12, i + 7), (px, py, pz, nx, ny) => C(L.leaf[Math.min(L.leaf.length - 1, ny > 0.5 ? 3 : ny > 0 ? 2 : 1)])));
+        parts.push(paint(smoothN(place(lumpy(blob(s, d), 0.16, 2.8, i + 7), x, y, z, 0, i, 0, 1, fl, 1)), leafC(L.leaf, y, s * fl, 0.12)));
       });
       return merge(parts);
     },
     palm(L, r, lean) {
       const parts = [], segs = 7; let x = 0, y = 0;
-      for (let i = 0; i < segs; i++) { const h = 0.55, g = cyl(0.12 - i * 0.008, 0.15 - i * 0.008, h, 6); place(g, x, y, 0, 0, 0, -lean * (0.3 + i * 0.12)); parts.push(paint(g, i % 2 ? L.bark : L.barkD || L.bark)); x += Math.sin(lean * (0.3 + i * 0.12)) * h; y += Math.cos(lean * (0.3 + i * 0.12)) * h * 0.98; }
-      for (let i = 0; i < 9; i++) { const g = frond(1.9, 0.32, 0.75, 6, 0.4); place(g, x, y, 0, 0, i / 9 * TAU + r() * 0.3, 0); parts.push(paint(g, (px, py, pz) => C(L.leaf[Math.min(L.leaf.length - 1, 1 + (Math.hypot(px - x, pz) > 1 ? 1 : 0) + (i % 2))]))); }
-      for (let i = 0; i < 3; i++) parts.push(paint(place(blob(0.13, 0), x + Math.cos(i * 2.1) * 0.15, y - 0.12, Math.sin(i * 2.1) * 0.15), '#6a4a2a'));
+      for (let i = 0; i < segs; i++) { const h = 0.55, g = new (T().CylinderGeometry)(0.12 - i * 0.008, 0.155 - i * 0.008, h, LO() ? 8 : 10, 2); g.translate(0, h / 2, 0); const pp = g.attributes.position; for (let k = 0; k < pp.count; k++) if (pp.getY(k) < 0.01) { pp.setX(k, pp.getX(k) * 1.12); pp.setZ(k, pp.getZ(k) * 1.12); } place(g, x, y, 0, 0, 0, -lean * (0.3 + i * 0.12)); parts.push(paint(smoothN(g), (px, py, pz, nx, ny, nz, t) => grad([L.barkD || L.bark, L.bark], 0.3 + 0.5 * ny + (i % 2) * 0.2, t))); x += Math.sin(lean * (0.3 + i * 0.12)) * h; y += Math.cos(lean * (0.3 + i * 0.12)) * h * 0.98; }
+      const nf = LO() ? 10 : 12, fs = LO() ? 7 : 9;
+      for (let i = 0; i < nf; i++) { const g = frond(1.9 + (i % 3) * 0.15, 0.32, 0.75 + (i % 2) * 0.15, fs, 0.4); place(g, x, y, 0, 0, i / nf * TAU + r() * 0.3, 0); parts.push(paint(g, (px, py, pz, nx, ny, nz, t) => grad(L.leaf, 0.85 - Math.min(1, Math.hypot(px - x, pz) / 2) * 0.55 + (i % 2) * 0.1, t))); }
+      for (let i = 0; i < 3; i++) parts.push(paint(smoothN(place(blob(0.13, 1), x + Math.cos(i * 2.1) * 0.15, y - 0.12, Math.sin(i * 2.1) * 0.15)), '#6a4a2a'));
       return merge(parts);
     },
     treefern(L, r) {
-      const parts = [paint(cyl(0.09, 0.14, 1.5, 6), L.barkD || L.bark)];
-      for (let i = 0; i < 10; i++) { const g = frond(1.3, 0.22, 0.95, 6, 0.6); place(g, 0, 1.5, 0, 0, i / 10 * TAU, 0); parts.push(paint(g, L.leaf[1 + (i % 2)])); }
+      const parts = [paint(jitter(cyl(0.09, 0.14, 1.5, 8), 0.02, 4), barkC(L, 1.5, true))];
+      const nf = LO() ? 11 : 14;
+      for (let i = 0; i < nf; i++) { const g = frond(1.3, 0.22, 0.95, LO() ? 6 : 8, 0.6); place(g, 0, 1.5, 0, 0, i / nf * TAU, 0); parts.push(paint(g, (px, py, pz, nx, ny, nz, t) => grad(L.leaf, 0.4 + (py - 1.2) * 0.4 + (i % 2) * 0.15, t))); }
       return merge(parts);
     },
     conifer(L, r, snow) {
-      const parts = [paint(cyl(0.09, 0.13, 0.7, 5), L.bark)];
+      const parts = [paint(smoothN(cyl(0.09, 0.13, 0.7, 7)), L.bark)];
       (HI() ? [[0.4, 1.05, 1.2], [0.95, 0.86, 1.05], [1.45, 0.66, 0.95], [1.95, 0.45, 0.8]] : [[0.45, 1.0, 1.35], [1.1, 0.78, 1.15], [1.75, 0.55, 0.95]]).forEach(([y, rr, h], i) => {
-        const g = jitter(place(cone(rr, h, HI() ? 10 : 7), 0, y, 0), 0.05, i);
-        parts.push(paint(g, (px, py) => C(snow && py > y + h * (0.55 - i * 0.08) ? snow : L.leaf[Math.min(L.leaf.length - 1, i)])));
+        const g = new (T().ConeGeometry)(rr, h, LO() ? 12 : 16, 3); g.translate(0, h / 2, 0);
+        const pp = g.attributes.position; for (let k = 0; k < pp.count; k++) { const ax = pp.getX(k), az = pp.getZ(k), a = Math.atan2(az, ax), e = pp.getY(k) / h, w = 1 + (noise2(a * 2.4 + i * 3, i) - 0.5) * 0.35 * (1 - e) + Math.max(0, Math.sin(a * 7 + i)) * 0.12 * (1 - e); pp.setX(k, ax * w); pp.setZ(k, az * w); if (e < 0.01) pp.setY(k, -0.12 * rr * (0.6 + noise2(a * 3, i))); }
+        place(g, 0, y, 0);
+        parts.push(paint(smoothN(g), (px, py, pz, nx, ny, nz, t) => { const e = (py - y) / h; if (snow && e > 0.5 - i * 0.08 && ny > 0.2) return t.copy(C(snow)); grad(L.leaf, 0.15 + i * 0.18 + e * 0.35, t); return t.multiplyScalar(0.8 + 0.2 * e); }));
       });
       return merge(parts);
     },
     bush(L, r, kind) {
       const parts = [], cols = kind === 'dry' ? ['#6a5a2a', '#8a7a3a', '#a89a50'] : L.leaf;
-      for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + r() * 0.5, d = i ? 0.42 : 0, s = 0.42 + r() * 0.2; parts.push(paint(jitter(place(blob(s, 1), Math.cos(a) * d, 0.38 + r() * 0.15 + (i ? 0 : 0.15), Math.sin(a) * d * 0.7), 0.12, i), (px, py, pz, nx, ny) => C(cols[Math.min(cols.length - 1, ny > 0.4 ? 2 : ny > -0.2 ? 1 : 0)]))); }
-      if (kind === 'snowbush') for (let i = 0; i < 3; i++) parts.push(paint(place(blob(0.32, 1), (i - 1) * 0.35, 0.78, 0, 0, 0, 0, 1, 0.45, 1), '#f6fbff'));
-      if (kind === 'berry') for (let i = 0; i < 5; i++) { const a = r() * TAU; parts.push(paint(place(blob(0.06, 0), Math.cos(a) * 0.55, 0.35 + r() * 0.4, Math.sin(a) * 0.4 + 0.25), '#d6336c')); }
+      for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + r() * 0.5, dd = i ? 0.42 : 0, s = 0.42 + r() * 0.2, cy = 0.38 + r() * 0.15 + (i ? 0 : 0.15); parts.push(paint(smoothN(place(lumpy(blob(s, 2), 0.18, 2.6, i), Math.cos(a) * dd, cy, Math.sin(a) * dd * 0.7)), leafC(cols, cy, s, (i % 2) * 0.08))); }
+      if (kind === 'snowbush') for (let i = 0; i < 3; i++) parts.push(paint(smoothN(place(blob(0.32, 2), (i - 1) * 0.35, 0.78, 0, 0, 0, 0, 1, 0.45, 1)), '#f6fbff'));
+      if (kind === 'berry') for (let i = 0; i < 7; i++) { const a = r() * TAU; parts.push(paint(smoothN(place(blob(0.06, 1), Math.cos(a) * 0.55, 0.35 + r() * 0.4, Math.sin(a) * 0.4 + 0.25)), '#d6336c')); }
       if (kind === 'dry') for (let i = 0; i < 6; i++) { const g = cyl(0.015, 0.03, 0.9, 3); place(g, 0, 0, 0, (r() - 0.5) * 1.2, 0, (r() - 0.5) * 1.2); parts.push(paint(g, '#5a4628')); }
       return merge(parts);
     },
-    fern(L, r) { const parts = []; for (let i = 0; i < 8; i++) { const g = frond(0.9 + r() * 0.3, 0.16, 0.7, 5, 0.9); place(g, 0, 0.02, 0, 0, i / 8 * TAU + r() * 0.3, 0); parts.push(paint(g, (px, py) => C(L.leaf[py > 0.35 ? 3 % L.leaf.length : py > 0.15 ? 2 : 1]))); } return merge(parts); },
+    fern(L, r) { const parts = [], nf = LO() ? 9 : 11; for (let i = 0; i < nf; i++) { const g = frond(0.9 + r() * 0.3, 0.16, 0.7, LO() ? 6 : 8, 0.9); place(g, 0, 0.02, 0, 0, i / nf * TAU + r() * 0.3, 0); parts.push(paint(g, (px, py, pz, nx, ny, nz, t) => grad(L.leaf, 0.25 + py * 1.3 + (i % 2) * 0.1, t))); } return merge(parts); },
     grass(cols, r) {
       const parts = [];
-      const nb = LO() ? 7 : HI() ? 10 : 8;
-      for (let i = 0; i < nb; i++) { const h = 0.45 + r() * 0.35, g = blade2(h, 0.035, (r() - 0.5) * 0.35, HI() ? 3 : 2); place(g, (r() - 0.5) * 0.3, 0, (r() - 0.5) * 0.24, (r() - 0.5) * 0.5, r() * Math.PI, 0); parts.push(paint(g, (px, py) => C(py > 0.3 ? cols[2] : py > 0.12 ? cols[1] : cols[0]))); }
+      const nb = LO() ? 9 : HI() ? 13 : 11;
+      for (let i = 0; i < nb; i++) { const h = 0.4 + r() * 0.45, g = blade2(h, 0.03 + r() * 0.012, (r() - 0.5) * 0.4, LO() ? 3 : 4); place(g, (r() - 0.5) * 0.34, 0, (r() - 0.5) * 0.28, (r() - 0.5) * 0.5, r() * Math.PI, 0); const sh = (r() - 0.5) * 0.25; parts.push(paint(g, (px, py, pz, nx, ny, nz, t) => grad(cols, py / 0.75 + sh, t))); }
       return merge(parts);
     },
     flowers(L, r, cols) {
@@ -181,14 +260,14 @@ window.DP = window.DP || {};
       return merge(parts);
     },
     rock(cols, r, ice, moss) {
-      const g = jitter(place(blob(1, HI() ? 2 : 1), 0, 0.35, 0, 0, r() * TAU, 0, 1, 0.62, 0.85), HI() ? 0.26 : 0.3, Math.floor(r() * 99));
-      const parts = [paint(g, (px, py, pz, nx, ny) => { const c = C(ice && ny > 0.6 ? '#f6fbff' : moss && ny > 0.7 && hashN(px, pz) > 0.35 ? moss : cols[Math.min(cols.length - 1, ny > 0.55 ? 2 : ny > 0 ? 1 : 0)]); return c; })];
-      if (!LO()) for (let i = 0; i < 4; i++) { const a = r() * TAU; parts.push(paint(jitter(place(blob(0.16 + r() * 0.1, 1), Math.cos(a) * 1.05, 0.05, Math.sin(a) * 0.8, 0, r() * 3, 0, 1, 0.55, 1), 0.05, i), cols[i % cols.length])); }
+      const d = HI() ? 3 : 2, sd = Math.floor(r() * 99), g = smoothN(place(lumpy(blob(1, d), 0.22, 1.8, sd), 0, 0.35, 0, 0, r() * TAU, 0, 1, 0.62, 0.85));
+      const parts = [paint(g, (px, py, pz, nx, ny, nz, t) => { if (ice && ny > 0.6) return t.copy(C('#f6fbff')); if (moss && ny > 0.55 && noise2(px * 3 + sd, pz * 3) > 0.42) return t.copy(C(moss)).multiplyScalar(0.85 + 0.3 * ny); grad(cols, 0.1 + 0.75 * (ny * 0.5 + 0.5), t); return t.multiplyScalar(0.72 + 0.28 * Math.min(1, py / 0.6 + 0.2)); })];
+      if (!LO()) for (let i = 0; i < 4; i++) { const a = r() * TAU; parts.push(paint(smoothN(place(lumpy(blob(0.16 + r() * 0.1, 2), 0.2, 2, i), Math.cos(a) * 1.05, 0.05, Math.sin(a) * 0.8, 0, r() * 3, 0, 1, 0.55, 1)), (px, py, pz, nx, ny, nz, t) => grad(cols, 0.2 + 0.6 * (ny * 0.5 + 0.5), t))); }
       return merge(parts);
     },
     slab(cols, r) { // плоская плита — вторая форма камня
-      const g = jitter(place(new (T().CylinderGeometry)(1, 1.1, 0.35, HI() ? 9 : 7, 1), 0, 0.12, 0, 0.08, r() * TAU, 0.05, 1.3, 1, 0.8), 0.12, 5);
-      return merge([paint(g, (px, py, pz, nx, ny) => C(cols[ny > 0.6 ? 2 : 1]))]);
+      const g = jitter(place(new (T().CylinderGeometry)(1, 1.1, 0.35, HI() ? 16 : 12, 2), 0, 0.12, 0, 0.08, r() * TAU, 0.05, 1.3, 1, 0.8), 0.1, 5);
+      return merge([paint(g, (px, py, pz, nx, ny, nz, t) => grad(cols, 0.25 + 0.65 * Math.max(0, ny), t))]);
     },
     lily(r) { // кувшинки: плоские листья с вырезом и пара цветков
       const THREE = T(), parts = [];
@@ -246,9 +325,9 @@ window.DP = window.DP || {};
     {
       const rows = [], nearZ = 18;
       const rFar = M.rowOfZ(-far * 0.995);
-      const RN = N(44, 52, 64); for (let i = 0; i <= RN; i++) { const rr = 1.12 - (1.12 - Math.max(M.rh + 0.01, rFar)) * Math.pow(i / RN, 1.0); rows.push(M.Z(rr * H)); }
+      const RN = N(60, 72, 90); for (let i = 0; i <= RN; i++) { const rr = 1.12 - (1.12 - Math.max(M.rh + 0.01, rFar)) * Math.pow(i / RN, 1.0); rows.push(M.Z(rr * H)); }
       rows.unshift(nearZ); for (let i = 1; i <= 10; i++) rows.push(rows[rows.length - 1] + (-far - rows[rows.length - 1]) * (i / 10));
-      const cols = N(56, 80, 110), pos = [], col = [], idx = [], tmp = new THREE.Color();
+      const cols = N(80, 110, 150), pos = [], col = [], idx = [], tmp = new THREE.Color();
       const g0 = S.ground.map(c => C(c)), farC = C(S.far), bed = C(S.bed), shore = C(S.shore);
       rows.forEach((Z, j) => {
         const hw = halfW(Z);
@@ -262,7 +341,7 @@ window.DP = window.DP || {};
           let c;
           if (pool) { h = -0.9 - n * 0.4; c = tmp.copy(bed).lerp(shore, 0.15 * n); }
           else {
-            const k = Math.floor(n * 4.99) % g0.length; c = tmp.copy(g0[k]).lerp(g0[(k + 1) % g0.length], fbm(X * 0.3, Z * 0.3, 2));
+            c = grad(S.ground, fbm(X * 0.045 + 7, Z * 0.045, 3) * 1.25 - 0.12 + (n - 0.5) * 0.35 + (fbm(X * 0.3, Z * 0.3, 2) - 0.5) * 0.25, tmp);
             if (inPool(X + 1.2, Z) || inPool(X - 1.2, Z) || inPool(X, Z + 1.2) || inPool(X, Z - 1.2)) { c.lerp(shore, 0.6); h = Math.min(h, -0.1); }
             c.lerp(farC, Math.min(0.85, beyond * 0.6 + side * 0.5));
           }
@@ -272,7 +351,7 @@ window.DP = window.DP || {};
       const rw = cols + 1;
       for (let j = 0; j < rows.length - 1; j++) for (let i = 0; i < cols; i++) { const a = j * rw + i, b = a + 1, c = a + rw, d = c + 1; idx.push(a, b, c, b, d, c); }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
-      const m = new THREE.Mesh(own(g), own(new THREE.MeshLambertMaterial({ vertexColors: true }))); m.name = 'terrain'; m.visible = !S.custom; root.add(m);
+      const m = new THREE.Mesh(own(g), own(detail(new THREE.MeshLambertMaterial({ vertexColors: true }), 'ground', 0, 1))); m.receiveShadow = true; m.name = 'terrain'; m.visible = !S.custom; root.add(m);
     }
     // 2) вода: форма водоёма из 2D-контура → плоскость с бегущей рябью
     const ripple = own(canvasTex('ripple', 128, 128, (x, w, h) => {
@@ -327,10 +406,10 @@ window.DP = window.DP || {};
     anim.push((t, dt) => { clouds.forEach(c => { c.position.x += c.userData.v * dt; if (c.position.x > far * 0.7) c.position.x = -far * 0.7; }); });
 
     // 4) горы вдали (настоящий рельеф с плоской заливкой), вулкан, столовые горы, ледник
-    const solid = own(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    const solid = own(detail(new THREE.MeshLambertMaterial({ vertexColors: true }), 'rock', 0, 1)), farMat = own(new THREE.MeshLambertMaterial({ vertexColors: true }));
     if (S.mount && !S.custom) {
       [[0.62, 0.17, 7], [0.42, 0.12, 9]].forEach(([dk, ek, seed], li) => {
-        const D = far * dk, cols = mobile ? 70 : 110, rowsN = 7, span = D * M.tanH * 2.6 + M.Wu * 1.5, pos = [], col = [], idx = [], tmp = new THREE.Color();
+        const D = far * dk, cols = mobile ? 120 : 180, rowsN = 14, span = D * M.tanH * 2.6 + M.Wu * 1.5, pos = [], col = [], idx = [], tmp = new THREE.Color();
         const base = C(S.mount.col).clone(), lit = C(S.mount.lit), snow = S.mount.snow ? C(S.mount.snow) : null;
         if (li === 1) base.lerp(C(S.L.leaf[0]), S.night ? 0.2 : 0.35);
         for (let j = 0; j <= rowsN; j++) for (let i = 0; i <= cols; i++) {
@@ -343,8 +422,8 @@ window.DP = window.DP || {};
           col.push(tmp.r, tmp.g, tmp.b);
         }
         const rw = cols + 1; for (let j = 0; j < rowsN; j++) for (let i = 0; i < cols; i++) { const a = j * rw + i, b = a + 1, c = a + rw, d = c + 1; idx.push(a, b, c, b, d, c); }
-        let g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g = g.toNonIndexed(); g.computeVertexNormals();
-        const m = new THREE.Mesh(own(g), solid); m.name = 'mountains'; root.add(m);
+        let g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
+        const m = new THREE.Mesh(own(g), farMat); m.name = 'mountains'; root.add(m);
       });
     }
     let smoke = null, lava = null;
@@ -354,7 +433,7 @@ window.DP = window.DP || {};
       prof.push(new THREE.Vector2(Rb * 0.06, Hv * 0.97));
       const g = jitter(new THREE.LatheGeometry(prof, 14).toNonIndexed(), Hv * 0.02, 3);
       paint(g, (x, y, z, nx) => { const e = y / Hv, c = new THREE.Color('#9b7f6e').lerp(C('#4f3d36'), 0.4 + nx * 0.3); if (e > 0.9) c.lerp(C('#ff7a2a'), (e - 0.9) * 6); if (e < 0.25) c.lerp(C('#5f7a4a'), (0.25 - e) * 3); return c; });
-      const vol = new THREE.Mesh(own(g), solid); vol.position.set(-M.Wu * 0.18 - D * 0.15, -1, -D); root.add(vol);
+      const vol = new THREE.Mesh(own(g), farMat); vol.position.set(-M.Wu * 0.18 - D * 0.15, -1, -D); root.add(vol);
       const glowT = radialTex('lava', [[0, 'rgba(255,170,80,.95)'], [0.4, 'rgba(255,120,40,.4)'], [1, 'rgba(255,100,30,0)']]);
       lava = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: glowT, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })));
       lava.position.set(vol.position.x, Hv * 0.98, -D + 1); lava.scale.setScalar(Hv * 0.5); root.add(lava);
@@ -371,7 +450,7 @@ window.DP = window.DP || {};
         const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const a = Math.atan2(p.getZ(i), p.getX(i)), k = 1 + (noise2(a * 1.6 + seed, p.getY(i) / Hh * 2) - 0.5) * 0.35; if (Math.abs(p.getY(i)) < Hh / 2 - 0.001) { p.setX(i, p.getX(i) * k); p.setZ(i, p.getZ(i) * k); } }
         const gg = g.toNonIndexed(); gg.computeVertexNormals(); g.dispose();
         paint(gg, (x, y, z, nx, ny) => { const e = (y + Hh / 2) / Hh, band = Math.floor(e * 7 + noise2(x * 0.05, z * 0.05)); const c = new THREE.Color(cols[band % 3]); if (ny > 0.9) c.copy(C(cols[3])); return c; });
-        const m = new THREE.Mesh(own(gg), solid); m.position.set(X, Hh / 2 - 1.5, Z); root.add(m); void R;
+        const m = new THREE.Mesh(own(gg), farMat); m.position.set(X, Hh / 2 - 1.5, Z); root.add(m); void R;
       };
       const farC = ['#c99a8a', '#e6c0ac', '#a77a72', '#e0b080'], midC = ['#c4724a', '#e8a070', '#8a4a34', '#e0b080'], nearC = ['#a85a3a', '#d98a5a', '#6a3424', '#d9a070'];
       [[-0.4, 0.62, 0.06, 0.1], [0.05, 0.66, 0.05, 0.07], [0.45, 0.6, 0.07, 0.12], [0.85, 0.64, 0.05, 0.08], [-0.85, 0.64, 0.06, 0.09]].forEach(([u, dk, rk, ek], i) => { const D = far * dk; mk(u * D * M.tanH * 1.6, -D, D * rk, hc + D * Math.tan(ek), farC, 30 + i); });
@@ -389,16 +468,16 @@ window.DP = window.DP || {};
       const p = sc.reflections[0].p; for (let i = 0; i < 7; i++) { const a = r() * TAU, d = Math.sqrt(r()) * 0.75, q = M.ground(p.cx * W + Math.cos(a) * p.rx * W * d, p.cy * H + Math.sin(a) * p.ry * H * d), s = 0.6 + r() * 1.2; const g = paint(jitter(place(new THREE.CylinderGeometry(s, s * 1.05, 0.18, 7, 1).toNonIndexed(), 0, 0, 0, 0, r() * 3, 0, 1.6, 1, 1), 0.08, i), (x, y) => C(y > 0.05 ? '#f4f9fc' : '#a8c8e0')); const m = new THREE.Mesh(own(g), solid); m.position.set(q.X, M.waterY + 0.02, q.Z); root.add(m); anim.push((t) => { m.position.y = M.waterY + 0.03 * Math.sin(t * 1.3 + i); }); }
     }
     if (S.islands) {
-      [[-0.35, 0.55], [0.4, 0.6]].forEach(([u, dk], i) => { const D = far * dk * 0.45, Rr = D * 0.09; const g = paint(jitter(place(new THREE.SphereGeometry(Rr, 10, 6, 0, TAU, 0, Math.PI / 2).toNonIndexed(), 0, 0, 0, 0, 0, 0, 1.6, 0.35, 1), Rr * 0.05, i), (x, y, z, nx, ny) => C(y < Rr * 0.06 ? '#e6d3a3' : ny > 0.6 ? '#6a9670' : '#4f7e5e')); const m = new THREE.Mesh(own(g), solid); m.position.set(u * D * M.tanH * 2, -0.4, -D); root.add(m); });
+      [[-0.35, 0.55], [0.4, 0.6]].forEach(([u, dk], i) => { const D = far * dk * 0.45, Rr = D * 0.09; const g = paint(jitter(place(new THREE.SphereGeometry(Rr, 10, 6, 0, TAU, 0, Math.PI / 2).toNonIndexed(), 0, 0, 0, 0, 0, 0, 1.6, 0.35, 1), Rr * 0.05, i), (x, y, z, nx, ny) => C(y < Rr * 0.06 ? '#e6d3a3' : ny > 0.6 ? '#6a9670' : '#4f7e5e')); const m = new THREE.Mesh(own(g), farMat); m.position.set(u * D * M.tanH * 2, -0.4, -D); root.add(m); });
     }
 
     // 5) растительность: деревья вдали и по краям мира, трава и цветы в полосе, папоротники на переднем плане
-    const vegTree = own(windMat(mobile ? 0.004 : 0.005)), vegSoft = own(windMat(0.12)), vegStill = own(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    const vegTree = own(windMat(mobile ? 0.004 : 0.005, null, 'leaf', 2.2)), vegSoft = own(windMat(0.12, null, 'leaf', 0.5)), vegStill = own(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
     const inst = (geo, mat, list, name) => {
       if (!list.length) { geo.dispose(); return null; }
       own(geo); const m = new THREE.InstancedMesh(geo, mat, list.length), mx = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
       list.forEach((it, i) => { e.set(0, it.ry || 0, it.rz || 0); q.setFromEuler(e); mx.compose(v.set(it.X, it.Y || 0, it.Z), q, s.set(it.s, it.s * (it.sy || 1), it.s)); m.setMatrixAt(i, mx); c.setRGB(1, 1, 1).multiplyScalar(it.tint || 1); m.setColorAt(i, c); });
-      m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.name = name || 'veg'; m.frustumCulled = false; root.add(m); return m;
+      m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.name = name || 'veg'; if (/^(trees-|bushes|rocks|slabs|cactus|ferns)/.test(m.name)) m.userData.cast = 1; if (/^(rocks|slabs|bushes)/.test(m.name)) m.userData.recv = 1; m.frustumCulled = false; root.add(m); return m;
     };
     const ok = (X, Z, pad) => !inPool(X, Z) && !inPool(X + pad, Z) && !inPool(X - pad, Z) && !inPool(X, Z - pad);
     const scatter = (n, zr, xr, fn) => { const out = []; for (let i = 0, tries = 0; out.length < n && tries < n * 6; tries++) { const Z = zr[0] + (zr[1] - zr[0]) * r(), hw = xr(Z), X = (r() * 2 - 1) * hw; const it = fn(X, Z); if (it) out.push(it); } return out; };
@@ -424,7 +503,7 @@ window.DP = window.DP || {};
       inst(KIT.rock(S.rock, rng(10), bgId === 'glacier', S.moss), solid, rocks, 'rocks');
       if (!mobile) { const slabs = scatter(N(0, 8, 14), [zBand1, zBand0 * 1.4], (Z) => halfW(Z) * 0.8, (X, Z) => ok(X, Z, 1.2) && (Z < zBand0 || Math.abs(X) > M.Wu * 0.38) ? { X, Z, Y: hAt(X, Z) - 0.05, s: 0.5 + r() * 0.8, ry: r() * TAU, tint: 0.9 + r() * 0.2 } : null); inst(KIT.slab(S.rock, rng(19)), solid, slabs, 'slabs'); }
       // трава: в полосе и перед ней (шевелится от ветра)
-      const grass = scatter(N(480, 700, 1000), [zBand1 + 8, zBand0 * 1.25], (Z) => halfW(Z) * 0.75, (X, Z) => ok(X, Z, 0.4) ? { X, Z, Y: hAt(X, Z), s: 0.7 + r() * 0.9, ry: r() * TAU, tint: 0.8 + r() * 0.4 } : null);
+      const grass = scatter(N(720, 1000, 1400), [zBand1 + 8, zBand0 * 1.25], (Z) => halfW(Z) * 0.75, (X, Z) => ok(X, Z, 0.4) ? { X, Z, Y: hAt(X, Z), s: 0.7 + r() * 0.9, ry: r() * TAU, tint: 0.8 + r() * 0.4 } : null);
       inst(KIT.grass(S.grass, rng(11)), vegSoft, grass, 'grass');
       const flowers = scatter(N(48, 80, 110), [zBand1, zBand0], (Z) => halfW(Z) * 0.6, (X, Z) => ok(X, Z, 0.6) ? { X, Z, s: 0.8 + r() * 0.6, ry: r() * TAU } : null);
       inst(KIT.flowers(S.L, rng(12), S.flowers), vegSoft, flowers, 'flowers');
@@ -501,8 +580,8 @@ window.DP = window.DP || {};
     }
 
     // свет и туман
-    const hemi = new THREE.HemisphereLight(S.hemi[0], S.hemi[1], S.night ? 1.55 : 1.65); root.add(hemi);
-    const dir = new THREE.DirectionalLight(S.night ? '#b8c8ff' : S.sun, S.night ? 1.2 : 2.0); dir.position.set(0.45, 1, 0.65).multiplyScalar(50); root.add(dir); root.add(dir.target);
+    const hemi = new THREE.HemisphereLight(S.hemi[0], S.hemi[1], S.night ? 1.55 : 1.5); root.add(hemi);
+    const dir = new THREE.DirectionalLight(S.night ? '#b8c8ff' : S.sun, S.night ? 1.2 : 2.3); dir.position.set(0.62, 1, 0.38).multiplyScalar(50); root.add(dir); root.add(dir.target);
     const fog = new THREE.Fog(S.fog, -Zb * 1.4, far * 0.95);
 
     /** Время суток: вечер — тёплый свет, ночь — синий, звёзды, луна, светлячки */
@@ -513,7 +592,7 @@ window.DP = window.DP || {};
       const night = tn && tn.night, warm = tn && !night ? C(tn.c) : null;
       const sk = S.sky.map(c => { const k = C(c).clone(); if (night) k.lerp(C('#0c1a3a'), 0.82); else if (warm) k.lerp(C(tn.c === '#ffc79a' ? '#ff9a5a' : '#ffc7b0'), 0.4); return '#' + k.getHexString(); });
       paintSky(sk);
-      hemi.intensity = night ? 0.75 : 1.65; dir.intensity = night ? 0.6 : 2.0;
+      hemi.intensity = night ? 0.75 : 1.5; dir.intensity = night ? 0.6 : 2.3;
       hemi.color.set(night ? '#6a7ab0' : warm ? C(S.hemi[0]).clone().lerp(warm, 0.5) : S.hemi[0]);
       dir.color.set(night ? '#a8b8ff' : warm ? C(S.sun).clone().lerp(warm, 0.7) : S.sun);
       fog.color.set(night ? '#1c2a48' : warm ? C(S.fog).clone().lerp(warm, 0.45) : S.fog);

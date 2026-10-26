@@ -128,6 +128,38 @@ window.DP = window.DP || {};
       this.c.addEventListener('webglcontextrestored', this._onRestored, false);
       return true;
     }
+    /** Настоящие мягкие тени от солнца (PCF soft): карта 1024 (телефон/ТВ) или 2048 (компьютер), камера тени следует за видимой полосой. ?sh=0 — выключить */
+    shadowSize() {
+      const m = /[?&]sh=(\d+)\b/.exec(location.search || ''); if (m) return +m[1];
+      if (PERF.lowMem) return 0;
+      return PERF.quality === 'high' ? 2048 : 1024;
+    }
+    setupSun() {
+      const THREE = T(), r = this.renderer, w = this.world, sz = this.shadowSize(), dir = w && w.dir; if (!dir) return;
+      this._sh = sz;
+      r.shadowMap.enabled = !!sz; r.shadowMap.type = THREE.PCFSoftShadowMap; r.shadowMap.autoUpdate = false; r.shadowMap.needsUpdate = true;
+      dir.castShadow = !!sz; if (!sz) return;
+      dir.shadow.mapSize.set(sz, sz); dir.shadow.bias = -0.0006; dir.shadow.normalBias = 0.04; dir.shadow.radius = 2;
+      this._sunDir = dir.position.clone().normalize();
+      const hiQ = PERF.quality !== 'low', top = PERF.quality === 'high';
+      w.root.traverse(o => { if (!o.isMesh) return; if (o.userData.cast && (top || !/^trees-/.test(o.name))) o.castShadow = true; if (o.userData.recv && hiQ) o.receiveShadow = true; });
+      if (this.shadow && this.shadow.mesh) this.shadow.mesh.material.opacity = 0.75; // контактные тени-пятна остаются, но мягче
+    }
+    /** Камера тени: охватывает видимую часть полосы прогулок вокруг точки взгляда; шаг привязан к текселям — тени не «дрожат» */
+    fitSun() {
+      const w = this.world, dir = w && w.dir; if (!this._sh || !dir || !this.M || !this._target) return;
+      const M = this.M, z = this.cam.z || 1, tp = this._target, E = Math.max(8, Math.min(M.Wu * 0.62, M.Wu * 0.62 / Math.pow(z, 0.9) + 4));
+      const sc = dir.shadow.camera, L = this._sunDir, D = E * 3 + 40, tex = 2 * E / this._sh;
+      const cx = Math.round(tp.X / tex) * tex, cz = Math.round((tp.Z - E * 0.25) / tex) * tex;
+      this._shMoved = this._shK !== cx + ',' + cz + ',' + E; this._shK = cx + ',' + cz + ',' + E;
+      dir.target.position.set(cx, 0, cz); dir.position.set(cx + L.x * D, L.y * D, cz + L.z * D);
+      if (sc.right !== E || sc.far !== D * 2) { sc.left = -E; sc.right = E; sc.top = E; sc.bottom = -E; sc.near = 1; sc.far = D * 2; sc.updateProjectionMatrix(); }
+      dir.target.updateMatrixWorld(); dir.updateMatrixWorld();
+      // карта теней: на компьютере каждый кадр, на ТВ/телефоне — через кадр (тени двигаются медленно, а кадр дешевле)
+      this._shF = (this._shF || 0) + 1; if (PERF.quality === 'high' || this._shF % 2 === 0 || this._shMoved) this.renderer.shadowMap.needsUpdate = true;
+      // новые динозавры/предметы отбрасывают тень
+      if (!this._castT || this.t - this._castT > 1) { this._castT = this.t; this.dyn.traverse(o => { if (o.isMesh && !o.castShadow && !(o.material && (o.material.transparent || o.material.isMeshBasicMaterial))) o.castShadow = true; }); }
+    }
     mkShadows() { this.shadow = DP.Things3D.shadows(160); this.scene3.add(this.shadow.mesh); }
     // ——— отображение логических координат (x, y в пикселях мира) в 3D ———
     setupMap() {
@@ -207,7 +239,7 @@ window.DP = window.DP || {};
       if (this.world) this.world.dispose();
       const refl = this.reflections; if (this.bg.id === 'custom') this.reflections = []; // свой фон: воду не рисуем (она на фото)
       this.world = DP.Nature3D.build(this); this.reflections = refl;
-      this.scene3.add(this.world.root); this.scene3.fog = this.world.fog;
+      this.scene3.add(this.world.root); this.scene3.fog = this.world.fog; this.setupSun();
       this.renderer.setClearColor(this.world.bg || this.world.fog.color, 1);
       this._propsKey = null;
     }
@@ -273,6 +305,7 @@ window.DP = window.DP || {};
       this.shadow.end();
       const tp = this._target; this._tgt = this._tgt || new (T().Vector3)(); this._tgt.set(tp.X, tp.Y, tp.Z);
       this.world.update(this.t, dt, { position: this.camera.position, target: this._tgt });
+      this.fitSun();
       this.render3();
       this.measure3();
       this.drawOverlay3();
@@ -537,8 +570,9 @@ window.DP = window.DP || {};
       // буферы: экран (2 цветовых для композитора + глубина) | MSAA ×4 (цвет+глубина) | FXAA: экран без глубины + промежуточный цвет+глубина
       const aa = this._aa, px = this.c.width * this.c.height, buf = px * (aa === 'fxaa' ? 4 * 2 + 8 : aa === 'msaa' ? 4 * 2 + 4 + 32 : 4 * 2 + 4);
       const ovB = this.ov ? this.ov.width * this.ov.height * 4 : 0;
-      const total = geoBytes + texBytes + buf + ovB;
-      return { textures: info.memory.textures, geometries: info.memory.geometries, calls: info.render.calls, triangles: info.render.triangles, texMB: +(texBytes / 1048576).toFixed(2), geoMB: +(geoBytes / 1048576).toFixed(2), bufferMB: +(buf / 1048576).toFixed(2), overlayMB: +(ovB / 1048576).toFixed(2), totalMB: +(total / 1048576).toFixed(2), dino: d3, dpr: this.dpr, size: [this.c.width, this.c.height], aa: this._aa, rs: this._rs || 1, toneMapping: this.renderer.toneMapping, fps: this.fpsNow || 0 };
+      const shB = this._sh ? this._sh * this._sh * 8 : 0;
+      const total = geoBytes + texBytes + buf + ovB + shB;
+      return { textures: info.memory.textures, geometries: info.memory.geometries, calls: info.render.calls, triangles: info.render.triangles, texMB: +(texBytes / 1048576).toFixed(2), geoMB: +(geoBytes / 1048576).toFixed(2), bufferMB: +(buf / 1048576).toFixed(2), shadowMB: +(shB / 1048576).toFixed(2), shadow: this._sh || 0, overlayMB: +(ovB / 1048576).toFixed(2), totalMB: +(total / 1048576).toFixed(2), dino: d3, dpr: this.dpr, size: [this.c.width, this.c.height], aa: this._aa, rs: this._rs || 1, toneMapping: this.renderer.toneMapping, fps: this.fpsNow || 0 };
     }
     samplePixels(n) {
       if (!this.renderer || !this.world) return null;

@@ -10,7 +10,7 @@ window.DP = window.DP || {};
   const mobile = () => !!(DP.Scene && DP.Scene.PERF && DP.Scene.PERF.mobile);
   const QL = () => (DP.Scene && DP.Scene.PERF && DP.Scene.PERF.quality) || (mobile() ? 'low' : 'high');
   // детализация: телефоны — как раньше (память iPhone), ТВ — средняя, компьютер — мелкая сетка, больше сглаживания, чешуя
-  const Q = () => { const q = QL(); return q === 'low' ? { res: 1, step: 3.4, tex: 512, sprite: 512, smooth: 2, scales: false } : q === 'mid' ? { res: 1.25, step: 2.6, tex: 1024, sprite: 1024, smooth: 3, scales: true } : { res: 1.5, step: 2.0, tex: 1024, sprite: 1024, smooth: 4, scales: true }; };
+  const Q = () => { const q = QL(); return q === 'low' ? { res: 1.15, step: 2.8, tex: 512, sprite: 512, smooth: 3, scales: true } : q === 'mid' ? { res: 1.35, step: 2.2, tex: 1024, sprite: 1024, smooth: 4, scales: true } : { res: 1.6, step: 1.7, tex: 1024, sprite: 1024, smooth: 5, scales: true }; };
   const SCALE = 4.2 / 428; // единиц сцены на единицу рисунка (ширина рисунка = 4.2 при size=1)
   const ORIGIN = { x: 200, y: 248 }; // точка между лап на земле
   // толщина: доля «круглого» сечения по видам и частям
@@ -386,6 +386,20 @@ window.DP = window.DP || {};
     scaleTex = new THREE.CanvasTexture(c); scaleTex.colorSpace = THREE.NoColorSpace; scaleTex.wrapS = scaleTex.wrapT = THREE.RepeatWrapping; scaleTex.repeat.set(26, 26);
     return scaleTex;
   }
+  /** «Живая» кожа: мягкий контровой свет по краю силуэта, затенение снизу (живот, под шеей) и тёплое подповерхностное свечение — объём без лишних текстур */
+  function skin(m) {
+    m.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        float dpAO = 0.74 + 0.26 * smoothstep(-0.85, 0.55, normal.y);
+        diffuseColor.rgb *= dpAO;`).replace('#include <opaque_fragment>', `{
+        float dpRim = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 2.6);
+        outgoingLight += diffuseColor.rgb * vec3(0.55, 0.62, 0.72) * dpRim * 0.55 + diffuseColor.rgb * vec3(0.10, 0.04, 0.02) * (1.0 - dpRim);
+      }
+      #include <opaque_fragment>`);
+    };
+    m.customProgramCacheKey = () => 'dpskin';
+    return m;
+  }
   // ——— глаза, веки, шапки ———
   let eyeGeo = null, lidGeo = null, scleraMat = null, glintMat = null;
   const hatTex = {};
@@ -418,14 +432,14 @@ window.DP = window.DP || {};
       if (e._dead3d) { releaseGeometry(set); releaseTex(tex); return null; }
       const sh = set.sh;
       const bump = Q().scales && !sh.free ? { bumpMap: scaleBump(), bumpScale: 0.55 } : {};
-      const mat = legend ? new THREE.MeshPhongMaterial(Object.assign({ map: tex.tex, shininess: 70, specular: new THREE.Color('#fff0b0'), emissive: new THREE.Color('#3a2a00') }, bump))
-        : Q().scales ? new THREE.MeshPhongMaterial(Object.assign({ map: tex.tex, shininess: 14, specular: new THREE.Color('#2a2a24') }, bump)) // лёгкий влажный блеск кожи
-          : new THREE.MeshLambertMaterial({ map: tex.tex });
+      const mat = skin(legend ? new THREE.MeshPhongMaterial(Object.assign({ map: tex.tex, shininess: 70, specular: new THREE.Color('#fff0b0'), emissive: new THREE.Color('#3a2a00') }, bump))
+        : Q().scales ? new THREE.MeshPhongMaterial(Object.assign({ map: tex.tex, shininess: 18, specular: new THREE.Color('#34342c') }, bump)) // лёгкий влажный блеск кожи
+          : new THREE.MeshLambertMaterial({ map: tex.tex }));
       const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
       const lidCol = new THREE.Color(tex.lid || (sp ? Din().dark(Din().palOf(sp, d.palette || 0).b, 0.12) : '#6a7a40'));
       const parts = [], eyes = [];
       const lo = QL() === 'low';
-      if (!eyeGeo) { eyeGeo = lo ? new THREE.SphereGeometry(1, 10, 8) : new THREE.SphereGeometry(1, 16, 12); lidGeo = new THREE.SphereGeometry(1, lo ? 10 : 16, lo ? 6 : 8, 0, TAU, 0, Math.PI * 0.62); }
+      if (!eyeGeo) { eyeGeo = lo ? new THREE.SphereGeometry(1, 16, 12) : new THREE.SphereGeometry(1, 24, 16); lidGeo = new THREE.SphereGeometry(1, lo ? 16 : 24, lo ? 8 : 10, 0, TAU, 0, Math.PI * 0.62); }
       if (!scleraMat) { scleraMat = new THREE.MeshPhongMaterial({ color: '#f4efe0', shininess: 60, specular: new THREE.Color('#ffffff') }); glintMat = new THREE.MeshBasicMaterial({ color: '#ffffff' }); }
       const eyeMat = new THREE.MeshPhongMaterial({ color: sp && sp.eye === 'slit' ? '#2a1404' : '#160c06', shininess: 90, specular: new THREE.Color('#ffffff') });
       const lidMat = new THREE.MeshLambertMaterial({ color: lidCol });
@@ -433,7 +447,7 @@ window.DP = window.DP || {};
         const geo = set.geos[i]; if (!geo) return;
         const g = new THREE.Group();
         g.position.set((p.pivot[0] - ORIGIN.x) * SCALE, (ORIGIN.y - p.pivot[1]) * SCALE, (p.z || 0) * SCALE);
-        const mesh = new THREE.Mesh(geo, mat); g.add(mesh);
+        const mesh = new THREE.Mesh(geo, mat); mesh.castShadow = true; g.add(mesh);
         body.add(g); parts.push({ p, g, mesh });
         p.eyes.forEach(E => [1, -1].forEach(side => {
           const r = E.r * SCALE * 0.95, ex = (E.x - p.pivot[0]) * SCALE, ey = (p.pivot[1] - E.y) * SCALE, ez = side * E.z * SCALE;

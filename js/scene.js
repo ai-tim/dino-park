@@ -1070,7 +1070,7 @@ window.DP = window.DP || {};
       saved = fb && /^(low|mid)$/.test(fb.q || '') ? fb.q : null;
     } catch (e) { /* ignore */ }
     const quality = qp ? qp[1] : saved ? saved : mobile || lowMem ? 'low' : tv || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) ? 'mid' : 'high';
-    return { mobile, tv, quality, reduce, render2d: !!(fb && fb.r === '2d'), maxDpr: 2, maxPixels: mobile ? (lowMem ? 0.9e6 : 1.4e6) : tv ? 2.2e6 : 4.5e6, maxFps: reduce || lowMem || tv ? 30 : 0 };
+    return { mobile, tv, quality, reduce, lowMem: !!lowMem, render2d: !!(fb && fb.r === '2d'), maxDpr: 2, maxPixels: mobile ? (lowMem ? 0.9e6 : 1.4e6) : tv ? 2.2e6 : 4.5e6, maxFps: reduce || lowMem || tv ? 30 : 0 };
   })();
   Scene.all = [];
   // шапки (эмодзи) и где они сидят на голове у каждого вида: [доля ширины, доля высоты, размер]
