@@ -449,6 +449,39 @@ window.DP = window.DP || {};
     return urlCache[key];
   }
 
+  /** v5: миниатюра для списков и выбора вида. SVG с фильтрами «бумаги» браузер декодирует в 800×508 и заново
+   *  рисует при прокрутке — на телефоне это и подвешивало выбор динозавров. Один раз (в фоне, по одной) переводим
+   *  её в маленькую картинку PNG и дальше отдаём готовую; до готовности — исходный SVG (и подменяем на месте). */
+  const thumbCache = {}, thumbWait = {};
+  let thumbQ = Promise.resolve();
+  const TW = 360;
+  function rasterThumb(key, src) {
+    if (thumbWait[key]) return thumbWait[key];
+    thumbWait[key] = thumbQ = thumbQ.then(() => new Promise((res) => {
+      const img = new Image(); img.decoding = 'async';
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas'); c.width = TW; c.height = Math.round(TW * VB.h / VB.w);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          const done = (u) => { c.width = c.height = 0; if (u) { thumbCache[key] = u; swap(src, u); } setTimeout(res, 16); };
+          if (c.toBlob) c.toBlob(b => done(b && URL.createObjectURL(b)), 'image/png'); else done(c.toDataURL('image/png'));
+        } catch (e) { setTimeout(res, 0); }
+      };
+      img.onerror = () => res(); img.src = src;
+    }));
+    return thumbWait[key];
+  }
+  function swap(src, u) { const im = document.images; for (let i = 0; i < im.length; i++) if (im[i].getAttribute('src') === src) im[i].src = u; }
+  // исходник миниатюры — тот же рисунок, но с маленьким собственным размером: декодируется в ~7 раз быстрее
+  const smallCache = {};
+  const smallUrl = (id, pal) => { const k = id + ':' + (pal || 0); return smallCache[k] || (smallCache[k] = enc(svg(id, 'color', pal, `width="${TW}" height="${Math.round(TW * VB.h / VB.w)}"`))); };
+  function thumb(id, paletteIndex) {
+    const key = id + ':' + (paletteIndex || 0);
+    if (thumbCache[key]) return thumbCache[key];
+    const src = smallUrl(id, paletteIndex); rasterThumb(key, src); return src;
+  }
+  function warmThumbs(list) { (list || SPECIES.map(s => [s.id, 0])).forEach(([id, pal]) => { if (byId[id]) rasterThumb(id + ':' + (pal || 0), smallUrl(id, pal)); }); }
+
   /** Подвижная «марионетка»: каждая часть растеризуется один раз в canvas (с обрезкой по краям). */
   const rigCache = {};
   // пикселей на единицу рисунка: на телефонах динозавры мельче, а память холстов в Safari ограничена
@@ -509,5 +542,5 @@ window.DP = window.DP || {};
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${VB.x} ${VB.y} ${VB.w} ${VB.h}" width="${Math.round(VB.w * scale)}" height="${Math.round(VB.h * scale)}">${defs(u, pal)}${partInner(id, ART[id][i], 'color', pal, u)}</svg>`;
   }
 
-  DP.Dinos = { SPECIES, byId, LEGEND, palOf, inner, svg, url, rig, ART, VB, VIEW: { w: 400, h: 254 }, partDoc, enc, dark, mix, OUTLINE_TYPES };
+  DP.Dinos = { SPECIES, byId, LEGEND, palOf, inner, svg, url, thumb, warmThumbs, rig, ART, VB, VIEW: { w: 400, h: 254 }, partDoc, enc, dark, mix, OUTLINE_TYPES };
 })();

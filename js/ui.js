@@ -2,7 +2,7 @@
 window.DP = window.DP || {};
 (function () {
   const U = () => DP.util;
-  let overlay, panel, onCloseCb = null;
+  let overlay, panel, onCloseCb = null, lastHtml = '';
   function ensure() {
     if (overlay) return;
     overlay = document.getElementById('overlay');
@@ -14,6 +14,17 @@ window.DP = window.DP || {};
     panel = overlay.querySelector('.panel');
     overlay.addEventListener('click', (e) => { if (e.target === overlay) UI.close(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && UI.isOpen()) UI.close(); });
+    // v5: экранная клавиатура — только она сдвигает низ панели (--kb); мелкие изменения (панель Safari) игнорируем,
+    // а случайную прокрутку документа сразу возвращаем, чтобы фиксированное меню не «ездило»
+    const vv = window.visualViewport;
+    if (vv) {
+      const fit = () => {
+        const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+        document.documentElement.style.setProperty('--kb', (kb > 120 ? kb : 0) + 'px');
+      };
+      vv.addEventListener('resize', fit);
+    }
+    window.addEventListener('scroll', () => { const a = document.activeElement; if (document.body.classList.contains('app-page') && (window.scrollY || window.scrollX) && !(a && /INPUT|TEXTAREA/.test(a.tagName))) window.scrollTo(0, 0); }, { passive: true });
   }
   const UI = {
     get panel() { ensure(); return panel; },
@@ -21,15 +32,25 @@ window.DP = window.DP || {};
     /** Показать экран: html-строка, bind(panel) навешивает обработчики */
     show(html, bind, opts) {
       ensure(); opts = opts || {};
+      const wasOpen = !overlay.classList.contains('closed');
+      // v5: фоновое обновление того же экрана (синхронизация, статус) — не перерисовываем, если ничего не изменилось,
+      // и не сбрасываем прокрутку: раньше меню «прыгало» к началу при каждом обновлении парка
+      const same = wasOpen && opts.refresh && opts.key && panel.dataset.key === opts.key;
+      if (same && lastHtml === html) return;
+      const keepScroll = same ? panel.scrollTop : 0;
       panel.className = 'panel glass' + (opts.wide ? ' wide' : '');
-      panel.innerHTML = html; panel.scrollTop = 0;
+      panel.dataset.key = opts.key || '';
+      panel.innerHTML = html; lastHtml = html; panel.scrollTop = keepScroll;
       overlay.classList.remove('closed');
+      if (!wasOpen) document.dispatchEvent(new CustomEvent('dp-ui', { detail: { open: true } }));
       if (bind) bind(panel);
+      if (same) return;
       const f = panel.querySelector('[autofocus]'); if (f && !('ontouchstart' in window)) setTimeout(() => f.focus(), 60);
     },
     close() {
       ensure(); if (overlay.classList.contains('closed')) return;
-      overlay.classList.add('closed');
+      overlay.classList.add('closed'); lastHtml = '';
+      document.dispatchEvent(new CustomEvent('dp-ui', { detail: { open: false } }));
       const cb = onCloseCb; onCloseCb = null; if (cb) cb();
     },
     onClose(cb) { onCloseCb = cb; },

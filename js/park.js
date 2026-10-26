@@ -9,7 +9,7 @@
   const locName = (id) => (DP.BG.byId[id] || LOCS[0]).name;
   const spOf = (d) => DP.Dinos.byId[d.species || d.base];
   const dinoName = (d) => d.name || (spOf(d) ? spOf(d).name : 'Мой рисунок');
-  const dinoImg = (d) => d.sprite || DP.Dinos.url(d.species, d.palette || 0);
+  const dinoImg = (d) => d.sprite || DP.Dinos.thumb(d.species, d.palette || 0);
 
   let park = null, mode = 'local';
   if (DEMO) park = demoPark();
@@ -50,19 +50,24 @@
   });
   let panTold = false;
   window.dpScene = scene; // для отладки/тестов
+  // v5: пока открыта панель (меню, выбор динозавра), сцена за ней рисуется ~10 к/с — на телефоне это освобождает GPU,
+  // и списки/прокрутка перестают подвисать
+  document.addEventListener('dp-ui', (ev) => { scene.dimFps = ev.detail.open && DP.Scene.PERF.mobile ? 10 : 0; });
   apply(true);
   scene.opts.entrance = true;
+  // v5: миниатюры для меню готовим заранее, в фоне (после загрузки сцены) — выбор динозавров открывается мгновенно
+  setTimeout(() => DP.Dinos.warmThumbs(DP.Dinos.SPECIES.map(s => [s.id, 0]).concat(park.dinos.filter(d => !d.sprite && d.species).map(d => [d.species, d.palette || 0]))), 3500);
 
   if (!DEMO) {
     Y.subscribe(park);
     Y.on('park', (p) => {
       if (p.id !== park.id) return;
       p.pin = park.pin; park = S.normalize(p); Life.ensure(park); apply(); lifeInbox(); updateHud();
-      if (UI.isOpen() && current === 'menu') screens.menu();
+      if (UI.isOpen() && current === 'menu') screens.menu(true);
       if (UI.isOpen() && current === 'card') refreshCard();
     });
     Y.on('event', handleEvent);
-    Y.on('status', () => { if (UI.isOpen() && current === 'menu') screens.menu(); });
+    Y.on('status', () => { if (UI.isOpen() && current === 'menu') screens.menu(true); });
     Y.on('deleted', (id) => { if (id !== park.id) return; S.remove(park.id); U.toast('🗑️ Этот парк удалили', 4000); setTimeout(() => location.replace('parks.html'), 1500); });
     Y.on('tvs', (n) => { if (n && UI.isOpen() && current === 'tv') { U.toast('📺 Телевизор подключён!', 3500); screens.tv(); } });
     Y.on('error', (m) => { U.toast('⚠️ ' + (m && m.error || 'Ошибка сервера'), 5000); });
@@ -104,7 +109,19 @@
   showHint(emptyHint(), 6000);
 
   // --- нажатия на парк ---
-  let feedModeUntil = 0;
+  // v5: после «Покормить всех» нажатия на парк больше НЕ перехватываются режимом корма (раньше каждое нажатие бросало
+  // корм и продлевало режим ещё на 8 с — меню было не открыть). Вместо этого — отдельная кнопка «🍖 Ещё корм» на 8 с.
+  const feedBtn = document.createElement('button');
+  feedBtn.id = 'feed-more'; feedBtn.type = 'button'; feedBtn.className = 'feed-more glass hidden'; feedBtn.innerHTML = '🍖 Ещё корм';
+  document.body.appendChild(feedBtn);
+  let feedBtnTimer = null;
+  const showFeedBtn = (ms) => { feedBtn.classList.remove('hidden'); clearTimeout(feedBtnTimer); feedBtnTimer = setTimeout(() => feedBtn.classList.add('hidden'), ms || 8000); };
+  feedBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const vw = canvas.clientWidth, vh = canvas.clientHeight;
+    const w = scene.toWorld(vw * (0.3 + Math.random() * 0.4), vh * (0.55 + Math.random() * 0.25));
+    const it = scene.foodAt(w.x, w.y); it.by = ME; fire({ type: 'feed', items: [it] }); showFeedBtn(8000);
+  });
   canvas.addEventListener('click', (e) => {
     if (UI.isOpen()) { UI.close(); return; }
     if (scene.wasDrag()) return;
@@ -116,7 +133,7 @@
     const en = scene.hit(x, y);
     if (ex && ex.kind === 'critter' && !en) { critterSay(ex.c); return; }
     if (en) { fire({ type: 'jump', uid: en.uid, text: U.pick(['РРРР! 🦖', '😄', '💚', 'Привет! 👋', '🎵', '😝', 'Ррр! 🔥', '⭐', '🤗', 'Ура! 🎉']) }); go('card', en.uid); return; }
-    if (Date.now() < feedModeUntil) { const it = scene.foodAt(x, y); it.by = ME; fire({ type: 'feed', items: [it] }); feedModeUntil = Date.now() + 8000; return; }
+    feedBtn.classList.add('hidden');
     screens.menu();
   });
 
@@ -184,7 +201,7 @@
     if (g === 'voices') { V.set(!V.isOn()); if (V.isOn()) V.play('trex', 'tap', 'menu'); return screens.section(curSection || 'more'); }
     go(g);
   }
-  if (DP.music) { DP.music.button('bl'); DP.music.onChange(() => { if (current === 'menu' && UI.isOpen()) screens.menu(); if (current === 'section' && UI.isOpen()) screens.section(curSection); }); }
+  if (DP.music) { DP.music.button('bl'); DP.music.onChange(() => { if (current === 'menu' && UI.isOpen()) screens.menu(true); if (current === 'section' && UI.isOpen()) screens.section(curSection); }); }
 
   function bar(k, v, asleep) {
     const low = k === 'sleep' ? !asleep && v < N.LOW : v < N.LOW;
@@ -204,9 +221,10 @@
     if (sl) { sl.dataset.act = s.asleep ? 'wake' : 'sleep'; sl.innerHTML = s.asleep ? '☀️ Разбудить' : '💤 Уложить спать'; }
   }
 
+  let menuRefresh = false;
   const screens = {
-    menu() {
-      curSection = null;
+    menu(refresh) {
+      curSection = null; menuRefresh = !!refresh;
       const st = DEMO ? '🎬 Демо-режим' : Y.mode === 'server' ? '<span class="status-dot on"></span>Синхронизация через сервер' : '<span class="status-dot"></span>Парк хранится на этом устройстве';
       const anyAwake = park.dinos.some(d => !N.at(d).asleep) || !park.dinos.length;
       const qa = [['feedall', '🍖', 'Покормить всех'], ['secret', '🤫', 'Тайно покормить своих'], anyAwake ? ['sleepall', '💤', 'Уложить всех спать'] : ['wakeall', '☀️', 'Разбудить всех'], ['playall', '🎾', 'Поиграть со всеми']];
@@ -222,7 +240,7 @@
         p.querySelector('#m-fs').onclick = () => U.toggleFullscreen();
         p.querySelectorAll('[data-go]').forEach(b => b.onclick = () => doGo(b.dataset.go));
         p.querySelectorAll('[data-sec]').forEach(b => b.onclick = () => (b.dataset.sec === 'tv' ? go('tv') : screens.section(b.dataset.sec)));
-      });
+      }, { refresh: menuRefresh, key: 'menu' });
     },
     /** Раздел меню: список пунктов */
     section(id) {
@@ -304,7 +322,7 @@
       UI.show(`${UI.head('Кого запустить?', { back: true, sub: 'Нажми на динозавра — он сразу прибежит в «' + locName(park.view) + '»' })}
         <input class="field" id="rd-name" maxlength="20" placeholder="Имя динозавра (необязательно)">
         <div class="hscroll" style="margin-top:12px">${DP.Dinos.SPECIES.map(s => `<button class="card" data-sp="${s.id}">
-            <img src="${DP.Dinos.url(s.id, 0)}" alt="${s.name}"><div class="nm">${s.name}</div>
+            <img src="${DP.Dinos.thumb(s.id, 0)}" alt="${s.name}" decoding="async"><div class="nm">${s.name}</div>
             <div class="meta">${s.diet === 'herb' ? '🌿 травоядный' : '🍖 хищник'} · ${s.habitat === 'sky' ? 'летает' : s.habitat === 'water' ? 'плавает' : 'гуляет'}</div></button>`).join('')}</div>`, (p) => {
         UI.wire(p, { back: backTo });
         p.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => {
@@ -736,7 +754,7 @@
       /** Выбор вида для легендарного динозавра */
       legend() {
         UI.show(`${UI.head('🌟 Золотой динозавр', { back: true, sub: 'Выбери, кто станет легендарным. Он будет сиять золотом' })}
-          <div class="hscroll">${DP.Dinos.SPECIES.map(s => `<button class="card" data-lsp="${s.id}"><img src="${DP.Dinos.url(s.id, DP.Dinos.LEGEND)}" alt="${s.name}"><div class="nm">${s.name}</div><div class="meta">🌟 легендарный</div></button>`).join('')}</div>`, (p) => {
+          <div class="hscroll">${DP.Dinos.SPECIES.map(s => `<button class="card" data-lsp="${s.id}"><img src="${DP.Dinos.thumb(s.id, DP.Dinos.LEGEND)}" alt="${s.name}" decoding="async"><div class="nm">${s.name}</div><div class="meta">🌟 легендарный</div></button>`).join('')}</div>`, (p) => {
           UI.wire(p, { back: () => go('eggs') });
           p.querySelectorAll('[data-lsp]').forEach(b => b.onclick = () => {
             if (!Life.buyLegend(park)) { U.toast('Не хватает яиц'); return; }
@@ -868,8 +886,8 @@
     UI.close();
     if (!here().length) { showHint('🦕 Здесь пока некого кормить!', 3500); return; }
     fire({ type: 'feed', all: true, items: scene.makeFeed().map(it => Object.assign(it, { by: ME })) });
-    feedModeUntil = Date.now() + 10000;
-    showHint('🍖 Обед для всех! Нажимай на парк — бросай ещё корм', 5000);
+    showFeedBtn(8000);
+    showHint('🍖 Обед для всех! Ещё корм — кнопка 🍖 внизу', 4000);
   }
   function feedSecret() {
     UI.close();

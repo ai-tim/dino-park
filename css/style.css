@@ -17,7 +17,7 @@ body { font-family: var(--font); color: var(--text); background: #0b2a2e; overfl
 button, input, select { font-family: inherit; }
 .hidden { display: none !important; }
 
-canvas.park-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: manipulation; cursor: pointer; }
+canvas.park-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: pointer; }
 
 /* --- Панели --- */
 .glass {
@@ -328,3 +328,27 @@ button.dino-tile { color: #fff; font: inherit; cursor: pointer; width: 100%; }
 .tile .s { color: var(--muted); font-size: 11.5px; font-weight: 700; line-height: 1.2; max-width: 100%; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
 .all-acts { margin-top: 0; }
 @media (max-width: 420px) { .tile { min-height: 92px; } .tile .e { font-size: 30px; } .tile .t { font-size: 14.5px; } .qa { font-size: 14px; min-height: 54px; padding: 8px 10px; } .qa .e { font-size: 22px; width: 28px; } }
+
+/* ——— v5: стабильное меню на телефоне ———
+   Причина «езды»: страница на iOS могла прокручиваться/пружинить (тянули за HUD, подсказку, панель — у них touch-action по умолчанию,
+   а холст был 100vh = высота БЕЗ панели Safari, т.е. выше видимой области). Страница сдвигалась, панель Safari пряталась/появлялась,
+   и всё фиксированное (меню по центру экрана) «ездило». Теперь документ закреплён и не прокручивается вовсе, панель
+   прибита к верху экрана (не пересчитывает центр при смене высоты), прокручивается только содержимое панели. */
+body.app-page { position: fixed; inset: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
+body.app-page input, body.app-page textarea { -webkit-user-select: text; user-select: text; }
+html:has(body.app-page) { overflow: hidden; overscroll-behavior: none; height: 100%; }
+.panel { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.hud, .zoombar, .hint, .demo-badge, .music-btn, .feed-more { touch-action: manipulation; }
+.overlay { padding-bottom: calc(16px + var(--kb, 0px)); }
+.panel { max-height: 100%; }
+.feed-more { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 16; min-height: 48px; padding: 0 22px; border-radius: 999px; color: #fff; font: inherit; font-weight: 900; font-size: 17px; cursor: pointer; }
+@media (max-width: 600px) {
+  .overlay { align-items: flex-start; padding: calc(10px + env(safe-area-inset-top, 0px)) calc(8px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px) + var(--kb, 0px)) calc(8px + env(safe-area-inset-left, 0px)); }
+  .overlay .panel { width: 100%; }
+}
+/* на сенсорных экранах размытие фона под панелями очень дорогое поверх живой 3D-сцены (из-за него подвисал выбор динозавров) */
+@media (pointer: coarse), (max-width: 600px) {
+  .overlay .panel, .hud button, .hint, .zoombar, .toast, .demo-badge, .music-btn, .feed-more { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  .overlay .panel { background: var(--panel-strong); }
+  .hud button, .zoombar, .hint, .demo-badge, .music-btn, .feed-more { background: rgba(6, 30, 36, .82); }
+}

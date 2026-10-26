@@ -1039,7 +1039,7 @@ window.DP = window.DP || {};
     loop(now) {
       if (this._dead) return;
       requestAnimationFrame(this.loop);
-      const fps = this.opts.maxFps || Scene.PERF.maxFps;
+      const fps = this.dimFps || this.opts.maxFps || Scene.PERF.maxFps; // dimFps: под открытой панелью сцена рисуется реже — меню отзывчивее
       if (fps && now - this._lastFrame < 1000 / fps - 2) return; // ограничение частоты кадров на слабых устройствах
       this._lastFrame = now;
       // медленный кадр (слабый телефон, тяжёлая 3D-сцена): логику догоняем шагами ≤ 50 мс, но не больше 150 мс за кадр
