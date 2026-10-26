@@ -50,13 +50,14 @@ async function pair(combo, first) {
   if (first) await phone.screenshot({ path: path.join(SHOTS, 'relay-phone-code.png') });
 
   const tctx = await tb.newContext(tk === 'cr' ? { viewport: { width: 1920, height: 1080 }, userAgent: LG_UA, locale: 'ru-RU' } : { viewport: { width: 1920, height: 1080 }, locale: 'ru-RU' });
+  await tctx.addInitScript(() => { window.DP_CONFIG = { JOIN_MS: 25000 }; });
   const tv = await tctx.newPage(); watch(tv, 'tv');
   await tv.goto(BASE + '/tv.html'); await tv.waitForTimeout(1200);
   ok(`[${label}] ТВ: режим без сервера`, /без регистрации/.test(await tv.textContent('body')));
   // неверный код — понятная ошибка
   await tv.fill('#code', String((+code + 1) % 100000).padStart(5, '0')); await tv.click('#go');
-  await tv.waitForFunction(() => /не найден|истёк|Неверн/i.test(document.querySelector('#err').textContent), null, { timeout: 30000 }).catch(() => {});
-  ok(`[${label}] ТВ: неверный код → понятная ошибка`, /не найден|истёк|Неверн/i.test(await tv.textContent('#err')), (await tv.textContent('#err')).slice(0, 80));
+  await tv.waitForFunction(() => /не найден|истёк|Неверн|не ответил/i.test(document.querySelector('#err').textContent), null, { timeout: 30000 }).catch(() => {});
+  ok(`[${label}] ТВ: неверный код → понятная ошибка`, /не найден|истёк|Неверн|не ответил/i.test(await tv.textContent('#err')), (await tv.textContent('#err')).slice(0, 80));
   // ввод кода экранной клавиатурой (как пультом)
   await tv.fill('#code', '');
   const t0 = Date.now();

@@ -51,7 +51,7 @@ window.DP = window.DP || {};
     if (self.stopped) return;
     try { ws = new WebSocket(self.b.url, ['mqtt']); } catch (e) { return self.retry(); }
     ws.binaryType = 'arraybuffer'; self.ws = ws; self.buf = new Uint8Array(0);
-    var to = setTimeout(function () { try { ws.close(); } catch (e) { /* ignore */ } }, 10000);
+    var to = setTimeout(function () { try { ws.close(); } catch (e) { /* ignore */ } }, 15000);
     ws.onopen = function () {
       var id = 'dp' + hex(rnd(8)), flags = 0x02, pl = [str16(id)];
       if (self.b.user) { flags |= 0x80; pl.push(str16(self.b.user)); }
@@ -343,7 +343,7 @@ window.DP = window.DP || {};
               if (done) return; done = true; finish();
               rej(Hub.online().length ? fail('nophone', 'Телефон с кодом ' + code + ' не ответил. Проверьте код и что на телефоне открыт парк (экран «📺 ТВ», код ещё действует), затем нажмите «Попробовать ещё раз».')
                 : fail('net', 'Пропала связь с сервером соединения (интернет-ретранслятором). Проверьте интернет на телевизоре и нажмите «Попробовать ещё раз».'));
-            }, 60000);
+            }, (window.DP_CONFIG || {}).JOIN_MS || 60000);
           });
         });
       });
@@ -405,7 +405,7 @@ window.DP = window.DP || {};
 
   var hosts = {};
   DP.relay = {
-    supported: supported, selfTest: selfTest, hub: Hub, brokers: brokers, CODE_TTL: CODE_TTL,
+    supported: supported, selfTest: selfTest, hub: Hub, brokers: brokers, DEFAULT_BROKERS: DEFAULT_BROKERS, CODE_TTL: CODE_TTL,
     host: function (parkId) { return hosts[parkId] || (hosts[parkId] = new Host(parkId)); },
     viewer: function () { return DP.relay._v || (DP.relay._v = new Viewer()); },
     savedTv: Viewer.saved,

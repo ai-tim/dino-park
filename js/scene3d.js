@@ -590,7 +590,7 @@ window.DP = window.DP || {};
       if (!window.THREE) return false;
       if (/[?&]r=2d\b/.test(location.search)) return false;
       if (PERF.render2d) return false;
-      const c = document.createElement('canvas'), gl = c.getContext('webgl2') || c.getContext('webgl');
+      const c = document.createElement('canvas'), gl = c.getContext('webgl2'); // three.js r163+ работает только с WebGL2 (старые ТВ — 2D)
       if (!gl) return false;
       const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext();
       return true;
