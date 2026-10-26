@@ -80,13 +80,15 @@ async function tvPage(label, { relays, skew, old = true, joinMs = 30000 } = {}) 
   await tv.goto(BASE + '/tv.html'); await tv.waitForTimeout(1200);
   return { ctx, tv };
 }
-async function enter(tv, code, label) {
+async function enter(tv, code, label, phone) {
   await tv.fill('#code', '');
   const t0 = Date.now();
   for (const d of code) await tv.click(`#kp [data-k="${d}"]`);
   if (!(await tv.evaluate(() => document.querySelector('#err').textContent))) await tv.click('#go').catch(() => {});
   const paired = await tv.waitForFunction(() => window.dpScene && window.dpScene.ents.length >= 2, null, { timeout: 60000 }).then(() => true).catch(() => false);
   ok(`[${label}] сопряжение`, paired, `${((Date.now() - t0) / 1000).toFixed(1)} с · ` + (paired ? await tv.evaluate(() => window.dpScene.ents.length + ' дино · ' + (window.dpScene.is3d ? '3D' : '2D') + ' · ' + DP.relay.hub.online().join(',')) : 'ТВ: ' + (await tv.textContent('#err')).slice(0, 160)));
+  if (!paired) { const st = (pg) => pg.evaluate(() => JSON.stringify((DP.relay.hub.conns || []).map(c => [c.b && c.b.name, c.open, !!c.ws, c.tries, c.rx ? Math.round((Date.now() - c.rx) / 1000) + 's' : '-']))).catch(e => e.message);
+    console.log('   ТВ брокеры:', await st(tv)); if (phone) console.log('   телефон брокеры:', await st(phone), await phone.evaluate(() => JSON.stringify(Object.values(DP.relay._hosts || {}).map(h => h.codeInfo && h.codeInfo())))); }
   return paired;
 }
 async function events(phone, tv, label) {
@@ -110,7 +112,7 @@ const S = {
     await tv.waitForFunction(() => document.querySelector('#err').dataset.kind, null, { timeout: 45000 }).catch(() => {});
     const w = await tv.evaluate(() => ({ kind: document.querySelector('#err').dataset.kind, t: document.querySelector('#err').textContent, retry: !!document.querySelector('#retry') }));
     ok(`[${L}] неверный код → «телефон не ответил» + «Попробовать ещё раз»`, w.kind === 'nophone' && w.retry && /не ответил/.test(w.t), w.kind + ' · ' + w.t.slice(0, 90));
-    if (await enter(tv, P.code, L)) await events(P.phone, tv, L);
+    if (await enter(tv, P.code, L, P.phone)) await events(P.phone, tv, L);
     await P.ctx.close(); await ctx.close();
   },
   async b() {
@@ -118,7 +120,7 @@ const S = {
     const P = await phoneWithCode('wk', L, { fn: SKEW, arg: -600000 }); if (!P.online) return 'skip';
     const { ctx, tv } = await tvPage(L, { skew: 600000 });
     ok(`[${L}] часы действительно разъехались на 20 мин`, Math.abs((await tv.evaluate(() => Date.now())) - (await P.phone.evaluate(() => Date.now())) - 1200000) < 60000);
-    if (await enter(tv, P.code, L)) await events(P.phone, tv, L);
+    if (await enter(tv, P.code, L, P.phone)) await events(P.phone, tv, L);
     await P.ctx.close(); await ctx.close();
   },
   async c() {
@@ -132,14 +134,14 @@ const S = {
       const c2 = (await P.phone.textContent('.tv-code')).replace(/\D/g, ''); if (c2 !== P.code) same = false;
     }
     ok(`[${L}] перерисовка экрана «ТВ» на телефоне не меняет код`, same);
-    if (await enter(tv, P.code, L)) await events(P.phone, tv, L);
+    if (await enter(tv, P.code, L, P.phone)) await events(P.phone, tv, L);
     await P.ctx.close(); await ctx.close();
   },
   async d() {
     const L = 'на ТВ один брокер недоступен';
     const P = await phoneWithCode('wk', L); if (!P.online) return 'skip';
     const { ctx, tv } = await tvPage(L, { relays: [DEAD].concat(BROKERS) });
-    await enter(tv, P.code, L);
+    await enter(tv, P.code, L, P.phone);
     await P.ctx.close(); await ctx.close();
   },
   async e() {

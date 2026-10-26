@@ -68,9 +68,9 @@ async function pair(combo, first) {
   await phone.waitForFunction(() => (DP.sync.tvInfo() || {}).paired > 0, null, { timeout: 15000 }).catch(() => {});
   ok(`[${label}] телефон видит подключённый ТВ`, await phone.evaluate(() => (DP.sync.tvInfo() || {}).paired > 0));
   if (first) { // второй телевизор с тем же кодом не войдёт
-    const t2c = await tb.newContext({ viewport: { width: 1280, height: 720 } }); const t2 = await t2c.newPage();
+    const t2c = await tb.newContext({ viewport: { width: 1280, height: 720 } }); await t2c.addInitScript(() => { window.DP_CONFIG = { JOIN_MS: 25000 }; }); const t2 = await t2c.newPage();
     await t2.goto(BASE + '/tv.html?code=' + code);
-    await t2.waitForFunction(() => /⚠️/.test(document.querySelector('#err').textContent), null, { timeout: 35000 }).catch(() => {});
+    await t2.waitForFunction(() => /⚠️/.test(document.querySelector('#err').textContent), null, { timeout: 50000 }).catch(() => {});
     ok(`[${label}] код одноразовый — второй ТВ с тем же кодом не входит`, await t2.evaluate(() => !window.dpScene && /⚠️/.test(document.querySelector('#err').textContent)));
     await t2c.close();
   }

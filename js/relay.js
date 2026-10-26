@@ -408,7 +408,7 @@ window.DP = window.DP || {};
     supported: supported, selfTest: selfTest, hub: Hub, brokers: brokers, DEFAULT_BROKERS: DEFAULT_BROKERS, CODE_TTL: CODE_TTL,
     host: function (parkId) { return hosts[parkId] || (hosts[parkId] = new Host(parkId)); },
     viewer: function () { return DP.relay._v || (DP.relay._v = new Viewer()); },
-    savedTv: Viewer.saved,
+    savedTv: Viewer.saved, _hosts: hosts,
     _t: { fnv: fnv, strip: strip }
   };
 })();
