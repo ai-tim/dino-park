@@ -573,12 +573,6 @@ window.DP = window.DP || {};
         e.headA += (ht - e.headA) * Math.min(1, dt * 6);
         if (e.jump) { e.jump += dt; if (e.jump > 0.75) { e.jump = 0; e.spin = 0; } }
         if (e.bubble) { e.bubble.t += dt; if (e.bubble.t > (e.bubble.life || 2.2)) e.bubble = null; }
-        // грустит, когда что-то на нуле
-        if (n && !n.asleep && e.state === 'wander' && !e.bubble && Math.random() < dt * 0.08) {
-          if (n.food < NEEDS().LOW) e.bubble = { text: U().pick(['Хочу есть! 🍖', 'Ням? 🥺']), t: 0 };
-          else if (n.play < NEEDS().LOW) e.bubble = { text: U().pick(['Скучно… 🎾', 'Поиграем? 🥺']), t: 0 };
-          else if (n.sleep < NEEDS().LOW) e.bubble = { text: 'Хочу спать… 🥱', t: 0 };
-        }
       });
       this.ents = this.ents.filter(e => e.state !== 'gone');
       if (this.updateExtras) this.updateExtras(dt);
@@ -947,33 +941,7 @@ window.DP = window.DP || {};
         ctx.fill(); ctx.fillStyle = e.d && e.d.legend ? '#ffd43b' : '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(e.name, e.x, ly + 1);
       }
       let top = e._top - 4;
-      if (this.showNeeds && e.need && e.state !== 'leave') {
-        const r = U().clamp(w * 0.055, 9, 17), keys = ['food', 'play', 'sleep'], gap = r * 2.5;
-        const cy = top - r - 2;
-        keys.forEach((kk, i) => {
-          const v = e.need[kk], low = kk === 'sleep' ? (!e.need.asleep && v < NEEDS().LOW) : v < NEEDS().LOW;
-          const cx = e.x + (i - 1) * gap, pulse = low ? 1 + 0.16 * Math.sin(t * 7 + i) : 1, rr = r * pulse;
-          ctx.save(); ctx.translate(cx, cy);
-          if (low) { ctx.fillStyle = `rgba(255,40,40,${0.35 + 0.25 * Math.sin(t * 7 + i)})`; ctx.beginPath(); ctx.arc(0, 0, rr * 1.45, 0, TAU); ctx.fill(); }
-          ctx.fillStyle = low ? 'rgba(120,10,10,.85)' : 'rgba(8,28,34,.66)'; ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.fill();
-          ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = rr * 0.22; ctx.beginPath(); ctx.arc(0, 0, rr * 0.86, 0, TAU); ctx.stroke();
-          ctx.strokeStyle = v < NEEDS().LOW ? '#ff4d4d' : v < 60 ? '#ffd43b' : '#69db7c';
-          if (kk === 'sleep' && e.need.asleep) ctx.strokeStyle = '#a5b4ff';
-          ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(0, 0, rr * 0.86, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.02, v / 100)); ctx.stroke();
-          ctx.font = `${Math.round(rr * 1.05)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.globalAlpha = low || (kk === 'sleep' && e.need.asleep) ? 1 : 0.92; ctx.fillText(NEEDS().ICON[kk], 0, rr * 0.06);
-          ctx.restore();
-        });
-        top = cy - r - 4;
-      } else if (e.need && e.state !== 'leave' && this.opts.needHint && e.need.low.length) {
-        // маленькая ненавязчивая подсказка: одна иконка самой срочной нужды
-        const k = e.need.low[0], r = U().clamp(w * 0.04, 7, 11) * zs, cy = top - r - 2;
-        ctx.save(); ctx.globalAlpha = 0.55 + 0.2 * Math.sin(t * 2 + e.seed);
-        ctx.fillStyle = 'rgba(8,28,34,.55)'; ctx.beginPath(); ctx.arc(e.x, cy, r, 0, TAU); ctx.fill();
-        ctx.font = `${Math.round(r * 1.15)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.globalAlpha = 0.85; ctx.fillText(NEEDS().ICON[k], e.x, cy + r * 0.06); ctx.restore();
-        top = cy - r - 3;
-      }
+      // потребности над головами больше не рисуем нигде (лендинг, парк, ТВ) — они только в панели «Мои динозавры»
       if (e.bubble) this.drawBubble(ctx, e.x, top, e.bubble);
     }
     draw() {

@@ -32,7 +32,7 @@
   const canvas = $('#park');
   const scene = DP.makeScene(canvas, {
     entrance: false, tod: U.param('tod') || localStorage.getItem('dp_tod') || 'auto',
-    world: { aspect: 1.75 }, showNeeds: false, needHint: true, maxFps: DP.Scene.PERF.mobile ? 30 : 0,
+    world: { aspect: 1.75 }, showNeeds: false, needHint: false, maxFps: DP.Scene.PERF.mobile ? 30 : 0,
     onEat: (e, f) => { // засчитывает только то устройство, которое бросило корм
       if (f.by !== ME) return;
       const d = dino(e.uid); if (!d) return;
@@ -122,36 +122,69 @@
 
   // --- экраны ---
   let current = null, tvTimer = null, cardTimer = null, cardUid = null;
-  UI.onClose(() => { clearInterval(cardTimer); clearInterval(tvTimer); current = null; });
+  UI.onClose(() => { clearInterval(cardTimer); clearInterval(tvTimer); current = null; curSection = null; });
+  const backTo = () => (curSection ? screens.section(curSection) : go('menu'));
   function go(name, arg) { current = name; clearInterval(tvTimer); clearInterval(cardTimer); screens[name](arg); }
   const voicesRow = () => V && V.isOn() ? ['voices', '🗣️', 'Голоса динозавров: включены', 'Рычат, когда их трогают, едят и просыпаются'] : ['voices', '🤐', 'Голоса динозавров: выключены', 'Нажми, чтобы включить'];
   const musicRow = () => DP.music && DP.music.isOn() ? ['music', '🔊', 'Музыка: включена', 'Приключенческий оркестр и птицы джунглей · нажми, чтобы выключить'] : ['music', '🔇', 'Музыка: выключена', 'Нажми, чтобы включить фоновую музыку'];
-  function rows() {
-    const h = here(), my = mine(h);
-    return [
+  // меню: быстрые действия сверху + шесть больших разделов; внутри разделов — прежние пункты
+  const SECTIONS = [
+    ['dinos', '🦕', 'Динозавры'], ['acts', '⚡', 'Действия'], ['locs', '🧭', 'Локации'],
+    ['rewards', '🏆', 'Награды'], ['tv', '📺', 'ТВ'], ['more', '⚙️', 'Ещё']
+  ];
+  function secLine(id) {
+    const h = here();
+    if (id === 'dinos') return U.dinoCount(park.dinos.length) + (park.dinos.some(d => d.owner === ME && N.at(d).low.length) ? ' · ждут заботы' : '');
+    if (id === 'acts') return h.length ? 'Корм, игра, сон' : 'Здесь пока никого';
+    if (id === 'locs') return locName(park.view);
+    if (id === 'rewards') return '🥚 ' + Life.total(park.life) + ' · 🎁 ' + park.life.gifts.length + ' · 🏆 ' + park.life.ach.length;
+    if (id === 'tv') { const ti = Y.tvInfo ? Y.tvInfo() : null; return ti && ti.paired ? 'Сопряжено: ' + ti.paired : 'Смарт-ТВ, планшет, ПК'; }
+    return 'Музыка, поделиться, парк';
+  }
+  function sectionRows(id) {
+    const h = here(), my = mine(h), anyAwake = park.dinos.some(d => !N.at(d).asleep);
+    if (id === 'dinos') return [
+      ['dinos', '🦕', 'Мои динозавры и их желания', `${U.dinoCount(park.dinos.length)} · 🍖 голод · 🎾 игра · 💤 сон`],
       ['photo', '📷', 'Сфотографировать динозавра', 'Раскрашенный лист оживёт в парке'],
       ['ready', '🦖', 'Запустить готового динозавра', 'Из набора, без раскрашивания'],
+      ['coloring', '🖨️', 'Раскраски для печати', DP.Dinos.SPECIES.length + ' видов динозавров на обычном листе А4'],
+      ['cleanup', '🧹', 'Убрать динозавров', 'Удалить лишних из парка']];
+    if (id === 'acts') return [
       ['feedall', '🍖', 'Покормить всех', h.length ? 'Корм упадёт для всех динозавров — увидят все экраны' : 'Здесь пока некого кормить'],
       ['secret', '🤫', 'Тайно покормить своих', my.length ? `Корм только возле твоих (${my.length}) — без объявления на ТВ` : 'Своих здесь нет: запусти динозавра с этого устройства'],
-      ['dinos', '🦕', 'Мои динозавры и их желания', `${U.dinoCount(park.dinos.length)} · 🍖 голод · 🎾 игра · 💤 сон · уложить/поиграть со всеми`],
-      ['news', '🆕', 'Что нового в парке', 'Яйца, награды, племя, прятки, подарки'],
+      anyAwake || !park.dinos.length ? ['sleepall', '💤', 'Уложить всех спать', 'Все динозавры отдохнут и выспятся'] : ['wakeall', '☀️', 'Разбудить всех', 'Подъём!'],
+      ['playall', '🎾', 'Поиграть со всеми', 'Мячи для всех, кто не спит'],
+      ['hide', '🙈', 'Прятки', 'Кто-нибудь спрячется — найди его']];
+    if (id === 'locs') return [
+      ['locs', '🧭', 'Локации и путешествия', 'Сейчас: ' + locName(park.view)],
+      ['bg', '🖼️', 'Свой фон', park.customBg ? 'Своя картинка в «' + locName(park.customLoc) + '»' : 'Загрузить свою картинку вместо фона локации']];
+    if (id === 'rewards') return [
       ['eggs', '🥚', 'Яйца и награды', eggsLine() + ' · шапки и золотой динозавр'],
-      ['tribe', '🐒', 'Соседи и племя', park.life.tribe.length ? park.life.tribe.map(a => a.name).join(', ') + ' · навыки' : park.life.mammals.length ? 'Зверьков: ' + park.life.mammals.length : 'Скоро кто-нибудь придёт…'],
       ['gifts', '🎁', 'Подарки', (park.life.gifts.length ? 'Получено: ' + park.life.gifts.length : 'Пока пусто') + ' · ввести подарочный код'],
       ['ach', '🏆', 'Достижения', park.life.ach.length + ' из ' + Life.ACH.length],
+      ['tribe', '🐒', 'Соседи и племя', park.life.tribe.length ? park.life.tribe.map(a => a.name).join(', ') + ' · навыки' : park.life.mammals.length ? 'Зверьков: ' + park.life.mammals.length : 'Скоро кто-нибудь придёт…'],
+      ['news', '🆕', 'Что нового в парке', 'Яйца, награды, племя, прятки, подарки']];
+    return [
       ['invite', '💌', 'Позвать друга и поделиться', 'Награды: 💎 за друга, 🥚 за репост'],
-      ['locs', '🧭', 'Локации и путешествия', 'Сейчас: ' + locName(park.view)],
-      ['coloring', '🖨️', 'Раскраски для печати', DP.Dinos.SPECIES.length + ' видов динозавров на обычном листе А4'],
-      ['bg', '🖼️', 'Свой фон', park.customBg ? 'Своя картинка в «' + locName(park.customLoc) + '»' : 'Загрузить свою картинку вместо фона локации'],
-      ['cleanup', '🧹', 'Убрать динозавров', 'Удалить лишних из парка'],
-      ['tv', '📺', 'Открыть на другом экране', 'На ТВ или смарт-ТВ, телефоне, ПК или планшете'],
       musicRow(), voicesRow(),
       ['admin', '⚙️', 'Управление парком', 'Название, пароль, время суток, удаление'],
       ['parks', '🗂️', 'Мои парки', 'Создайте новые парки, переключайтесь'],
-      ['support', '💬', 'Поддержка', 'Вопрос, идея или ошибка — напишите нам']
-    ];
+      ['support', '💬', 'Поддержка', 'Вопрос, идея или ошибка — напишите нам']];
   }
-  if (DP.music) { DP.music.button('bl'); DP.music.onChange(() => { if (current === 'menu' && UI.isOpen()) screens.menu(); }); }
+  let curSection = null;
+  function doGo(g) {
+    if (g === 'feedall') return feedAll();
+    if (g === 'secret') return feedSecret();
+    if (g === 'sleepall') { UI.close(); sleepAll(); if (!DEMO) Y.sendEvent(park, { type: 'sleepall' }); return; }
+    if (g === 'wakeall') { UI.close(); wakeAll(); return; }
+    if (g === 'playall') { UI.close(); if (playAll() && !DEMO) Y.sendEvent(park, { type: 'playall' }); return; }
+    if (g === 'hide') { UI.close(); const c = scene.ents.filter(e => e.habitat === 'ground' && e.state === 'wander' && !e.enter); if (!c.length || !startHide(U.pick(c).uid)) showHint('🙈 Сейчас некому прятаться — попробуй позже', 3000); return; }
+    if (g === 'coloring') return window.open('coloring.html', '_blank');
+    if (g === 'music') { if (DP.music) DP.music.toggle(); return; }
+    if (g === 'voices') { V.set(!V.isOn()); if (V.isOn()) V.play('trex', 'tap', 'menu'); return screens.section(curSection || 'more'); }
+    go(g);
+  }
+  if (DP.music) { DP.music.button('bl'); DP.music.onChange(() => { if (current === 'menu' && UI.isOpen()) screens.menu(); if (current === 'section' && UI.isOpen()) screens.section(curSection); }); }
 
   function bar(k, v, asleep) {
     const low = k === 'sleep' ? !asleep && v < N.LOW : v < N.LOW;
@@ -173,32 +206,38 @@
 
   const screens = {
     menu() {
-      const st = DEMO ? '🎬 Демо-режим' : Y.mode === 'server' ? '<span class="status-dot on"></span>Синхронизация через сервер' : '<span class="status-dot"></span>Локальный режим (это устройство)';
+      curSection = null;
+      const st = DEMO ? '🎬 Демо-режим' : Y.mode === 'server' ? '<span class="status-dot on"></span>Синхронизация через сервер' : '<span class="status-dot"></span>Парк хранится на этом устройстве';
+      const anyAwake = park.dinos.some(d => !N.at(d).asleep) || !park.dinos.length;
+      const qa = [['feedall', '🍖', 'Покормить всех'], ['secret', '🤫', 'Тайно покормить своих'], anyAwake ? ['sleepall', '💤', 'Уложить всех спать'] : ['wakeall', '☀️', 'Разбудить всех'], ['playall', '🎾', 'Поиграть со всеми']];
       UI.show(`<div class="panel-head">
           <div style="flex:1;min-width:0"><h2>${U.esc(park.name)} <button class="icon-btn" id="m-rename" title="Переименовать" style="width:34px;height:34px;font-size:15px;vertical-align:middle">✏️</button></h2>
           <div class="sub">${U.dinoCount(park.dinos.length)} · здесь ${here().length} · ${U.esc(locName(park.view))}</div></div>
           <button class="icon-btn" id="m-fs" title="Во весь экран">⛶</button><button class="icon-btn" data-close title="Закрыть">✕</button></div>
-        <div class="rows">${rows().map(r => `<button class="row" data-go="${r[0]}"><span class="emo">${r[1]}</span><span class="txt"><div class="t">${r[2]}</div><div class="s">${r[3]}</div></span><span class="chev">›</span></button>`).join('')}</div>
+        <div class="qa-grid" id="m-qa">${qa.map(r => `<button class="qa" data-go="${r[0]}"><span class="e">${r[1]}</span><span class="t">${r[2]}</span></button>`).join('')}</div>
+        <div class="tiles" id="m-tiles">${SECTIONS.map(r => `<button class="tile" data-sec="${r[0]}"><span class="e">${r[1]}</span><span class="t">${r[2]}</span><span class="s">${U.esc(secLine(r[0]))}</span></button>`).join('')}</div>
         <div class="menu-foot"><span>${st}</span><a href="index.html" style="color:var(--muted)">🏠 На главную</a></div>`, (p) => {
         UI.wire(p);
         p.querySelector('#m-rename').onclick = () => go('rename');
         p.querySelector('#m-fs').onclick = () => U.toggleFullscreen();
-        p.querySelectorAll('[data-go]').forEach(b => b.onclick = () => {
-          const g = b.dataset.go;
-          if (g === 'feedall') return feedAll();
-          if (g === 'secret') return feedSecret();
-          if (g === 'coloring') return window.open('coloring.html', '_blank');
-          if (g === 'music') { if (DP.music) DP.music.toggle(); return; }
-          if (g === 'voices') { V.set(!V.isOn()); if (V.isOn()) V.play('trex', 'tap', 'menu'); return screens.menu(); }
-          go(g);
-        });
+        p.querySelectorAll('[data-go]').forEach(b => b.onclick = () => doGo(b.dataset.go));
+        p.querySelectorAll('[data-sec]').forEach(b => b.onclick = () => (b.dataset.sec === 'tv' ? go('tv') : screens.section(b.dataset.sec)));
+      });
+    },
+    /** Раздел меню: список пунктов */
+    section(id) {
+      curSection = id; const sec = SECTIONS.find(x => x[0] === id) || SECTIONS[5];
+      UI.show(`${UI.head(sec[1] + ' ' + sec[2], { back: true })}
+        <div class="rows">${sectionRows(id).map(r => `<button class="row" data-go="${r[0]}"><span class="emo">${r[1]}</span><span class="txt"><div class="t">${r[2]}</div><div class="s">${r[3]}</div></span><span class="chev">›</span></button>`).join('')}</div>`, (p) => {
+        UI.wire(p, { back: () => go('menu') });
+        p.querySelectorAll('[data-go]').forEach(b => b.onclick = () => doGo(b.dataset.go));
       });
     },
     rename() {
       UI.show(`${UI.head('Название парка', { back: true })}
         <input class="field" id="rn" maxlength="40" value="${U.esc(park.name)}" placeholder="Парк" autofocus>
         <div class="btn-row"><button class="btn" data-back>Отмена</button><button class="btn green" id="rn-ok">Сохранить</button></div>`, (p) => {
-        UI.wire(p, { back: () => go('menu') });
+        UI.wire(p, { back: backTo });
         const ok = () => { park.name = p.querySelector('#rn').value.trim().slice(0, 40) || 'Парк'; commit(); go('menu'); };
         p.querySelector('#rn-ok').onclick = ok; p.querySelector('#rn').onkeydown = (e) => { if (e.key === 'Enter') ok(); };
       });
@@ -257,7 +296,7 @@
         <div class="grid3">${LOCS.map(l => { const n = park.dinos.filter(d => d.loc === l.id).length; const img = park.customBg && park.customLoc === l.id ? park.customBg : DP.BG.thumb(l.id);
           return `<button class="thumb ${park.view === l.id ? 'active' : ''}" data-loc="${l.id}"><img src="${img}" alt=""><div class="cap">${U.esc(l.name)} · ${n ? '🦕 ' + n : 'пусто'}</div></button>`; }).join('')}</div>
         <label class="lbl" style="display:flex;gap:10px;align-items:center;margin-top:12px"><input type="checkbox" id="lc-all"> 🧭 Путешествие: взять с собой всех динозавров отсюда</label>`, (p) => {
-        UI.wire(p, { back: () => go('menu') });
+        UI.wire(p, { back: backTo });
         p.querySelectorAll('[data-loc]').forEach(b => b.onclick = () => travelTo(b.dataset.loc, p.querySelector('#lc-all').checked));
       }, { wide: true });
     },
@@ -267,7 +306,7 @@
         <div class="hscroll" style="margin-top:12px">${DP.Dinos.SPECIES.map(s => `<button class="card" data-sp="${s.id}">
             <img src="${DP.Dinos.url(s.id, 0)}" alt="${s.name}"><div class="nm">${s.name}</div>
             <div class="meta">${s.diet === 'herb' ? '🌿 травоядный' : '🍖 хищник'} · ${s.habitat === 'sky' ? 'летает' : s.habitat === 'water' ? 'плавает' : 'гуляет'}</div></button>`).join('')}</div>`, (p) => {
-        UI.wire(p, { back: () => go('menu') });
+        UI.wire(p, { back: backTo });
         p.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => {
           const sp = DP.Dinos.byId[b.dataset.sp];
           const d = newDino({ species: sp.id, palette: Math.floor(Math.random() * sp.palettes.length), sprite: null, name: p.querySelector('#rd-name').value.trim(), diet: sp.diet, habitat: sp.habitat });
@@ -283,7 +322,7 @@
           <div class="btn-row"><button class="btn" id="bg-here">📍 Показывать здесь (${U.esc(locName(park.view))})</button><button class="btn" id="bg-add">🔄 Заменить</button><button class="btn danger" id="bg-del">🗑️ Убрать свой фон</button></div>`
           : `<div class="empty"><div class="big">🖼️</div>Загрузи фото или рисунок — динозавры будут гулять на нём в «${U.esc(locName(park.view))}»</div>
           <div class="btn-row"><button class="btn green" id="bg-add">＋ Загрузить картинку</button></div>`}`, (p) => {
-        UI.wire(p, { back: () => go('menu') });
+        UI.wire(p, { back: backTo });
         p.querySelector('#bg-add').onclick = () => $('#bg-file').click();
         const h = p.querySelector('#bg-here'); if (h) h.onclick = () => { park.customLoc = park.view; commit(); go('bg'); };
         const del = p.querySelector('#bg-del'); if (del) del.onclick = () => { park.customBg = null; park.customLoc = null; commit(); go('bg'); };
@@ -293,15 +332,15 @@
       UI.show(`${UI.head('Убрать динозавров', { back: true, sub: park.dinos.length ? 'Нажми ✕, чтобы убрать динозавра из парка' : '' })}
         ${park.dinos.length ? `<div class="dino-grid">${park.dinos.map(d => `<div class="dino-tile"><img src="${dinoImg(d)}" alt=""><div class="nm">${U.esc(d.name || (d.sprite ? '🖍️ ' + (spOf(d) ? spOf(d).name : 'Рисунок') : spOf(d).name))}</div><div class="s">${U.esc(locName(d.loc))}</div><button class="del" data-del="${d.uid}" title="Убрать">✕</button></div>`).join('')}</div><div class="btn-row"><button class="btn danger" id="cl-all">🧹 Убрать всех</button></div>`
         : '<div class="empty"><div class="big">🌴</div>В парке пока никого нет</div>'}`, (p) => {
-        UI.wire(p, { back: () => go('menu') });
+        UI.wire(p, { back: backTo });
         p.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { park.dinos = park.dinos.filter(d => d.uid !== b.dataset.del); commit(); go('cleanup'); });
         const all = p.querySelector('#cl-all');
         if (all) all.onclick = () => { if (confirm('Убрать всех динозавров из парка?')) { park.dinos = []; commit(); go('cleanup'); } };
       }, { wide: true });
     },
     async tv() {
-      if (DEMO) { UI.show(`${UI.head('Открыть на другом экране', { back: true })}<div class="empty"><div class="big">🎬</div>В демо-режиме парк не сохраняется. Создай свой парк — и его можно будет открыть на телевизоре.</div><div class="btn-row"><a class="btn green" href="parks.html">Создать парк</a></div>`, (p) => UI.wire(p, { back: () => go('menu') })); return; }
-      UI.show(`${UI.head('Открыть на другом экране', { back: true })}<div class="spinner"></div>`, (p) => UI.wire(p, { back: () => go('menu') }), { wide: true });
+      if (DEMO) { UI.show(`${UI.head('Открыть на другом экране', { back: true })}<div class="empty"><div class="big">🎬</div>В демо-режиме парк не сохраняется. Создай свой парк — и его можно будет открыть на телевизоре.</div><div class="btn-row"><a class="btn green" href="parks.html">Создать парк</a></div>`, (p) => UI.wire(p, { back: backTo })); return; }
+      UI.show(`${UI.head('Открыть на другом экране', { back: true })}<div class="spinner"></div>`, (p) => UI.wire(p, { back: backTo }), { wide: true });
       const info = await Y.tvCode(park);
       if (current !== 'tv') return;
       const url = baseUrl() + 'tv.html?code=' + info.code;
@@ -321,7 +360,7 @@
             <div class="timer" id="tv-timer" style="margin-top:8px"></div>
             <button class="btn" style="margin-top:12px" id="tv-open">🪟 Открыть в новой вкладке</button></div>
         </div>${warn}`, (p) => {
-        UI.wire(p, { back: () => go('menu') });
+        UI.wire(p, { back: backTo });
         p.querySelector('#tv-open').onclick = () => window.open(url, '_blank');
         const off = p.querySelector('#tv-off'); if (off) off.onclick = async () => { await Y.tvDisconnect(); U.toast('📴 Телевизоры отключены', 3000); screens.tv(); };
         const tick = () => {
@@ -345,7 +384,7 @@
             <p class="note">Все 4 чёрных квадрата по углам листа должны попасть в кадр.</p></div>
           ${phoneUrl ? `<div class="tv-box ${coarse ? 'soft' : ''}" id="ph-qr"><h3><span class="num">2</span>Или телефоном</h3><div class="qr">${qr(phoneUrl)}</div><p class="note">${qrNote}</p></div>` : ''}
         </div>`, (p) => {
-        UI.wire(p, { back: () => go('menu') });
+        UI.wire(p, { back: backTo });
         p.querySelector('#ph-cam').onclick = openCamera;
         p.querySelector('#ph-file').onclick = () => $('#photo-file').click();
       }, { wide: true });
@@ -363,12 +402,10 @@
         <div class="note" id="ad-msg"></div>`}
         <label class="lbl">🌗 Время суток</label>
         <div class="loc-chips">${[['auto', '🕰️ Как на часах'], ['day', '☀️ День'], ['evening', '🌇 Вечер'], ['night', '🌙 Ночь']].map(t => `<button class="chip ${tod === t[0] ? 'on' : ''}" data-tod="${t[0]}">${t[1]}</button>`).join('')}</div>
-        <label class="lbl" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="ad-rings" ${scene.showNeeds ? 'checked' : ''}> Показывать значки желаний над динозаврами</label>
         ${DEMO ? '' : `<div class="btn-row"><button class="btn danger" id="ad-del">🗑️ Удалить парк</button></div><p class="note">Удалённый парк хранится на сервере ещё 30 дней — его можно восстановить через администратора.</p>`}`, (p) => {
-        UI.wire(p, { back: () => go('menu') });
+        UI.wire(p, { back: backTo });
         p.querySelector('#ad-ren').onclick = () => { park.name = p.querySelector('#ad-name').value.trim().slice(0, 40) || 'Парк'; commit(); U.toast('✓ Сохранено'); };
         p.querySelectorAll('[data-tod]').forEach(b => b.onclick = () => { localStorage.setItem('dp_tod', b.dataset.tod); scene.setTimeOfDay(b.dataset.tod); go('admin'); });
-        p.querySelector('#ad-rings').onchange = (e) => { scene.showNeeds = e.target.checked; localStorage.setItem('dp_rings', e.target.checked ? '1' : '0'); };
         if (DEMO) return;
         p.querySelector('#ad-show').onclick = () => { const el = p.querySelector('#ad-pin'); el.textContent = el.textContent === '••••' ? el.dataset.pin : '••••'; };
         p.querySelector('#ad-pinok').onclick = async () => {
@@ -388,7 +425,7 @@
       UI.show(`${UI.head('Мои парки', { back: true })}
         <div class="rows">${UI.parkRows(list, park.id, true)}</div>
         <div class="btn-row"><button class="btn green" id="pk-new">＋ Новый парк</button></div>`, (p) => {
-        UI.wire(p, { back: () => go('menu') });
+        UI.wire(p, { back: backTo });
         p.querySelectorAll('[data-open]').forEach(r => r.onclick = (e) => {
           if (e.target.closest('[data-del]')) return;
           const id = r.dataset.open; if (id === park.id && !DEMO) return UI.close();
@@ -565,7 +602,7 @@
     hud = document.createElement('div'); hud.className = 'hud'; hud.id = 'hud';
     hud.innerHTML = `<button id="hud-dinos" title="Мои динозавры">🦕<i class="dot hidden"></i></button><button id="hud-eggs" title="Яйца и награды">🥚<b id="hud-eggn">0</b></button><button id="hud-gifts" title="Подарки">🎁<i class="dot hidden"></i></button><button id="hud-ach" title="Достижения">🏆</button><button id="hud-menu" title="Меню">☰</button>`;
     document.body.appendChild(hud);
-    const on = (id, f) => hud.querySelector(id).addEventListener('click', (e) => { e.stopPropagation(); f(); });
+    const on = (id, f) => hud.querySelector(id).addEventListener('click', (e) => { e.stopPropagation(); curSection = null; f(); });
     on('#hud-dinos', () => go('dinos')); on('#hud-eggs', () => go('eggs')); on('#hud-gifts', () => go('gifts')); on('#hud-ach', () => go('ach')); on('#hud-menu', () => screens.menu());
     zbar = document.createElement('div'); zbar.className = 'zoombar glass hidden'; zbar.id = 'zoombar';
     zbar.innerHTML = '<span id="zb-name"></span><button class="chip" id="zb-out">🔍 Отдалить</button>';
@@ -638,10 +675,10 @@
               <div class="bars">${['food', 'play', 'sleep'].map(k => `<span class="mb ${(k === 'sleep' ? !s.asleep && s[k] < N.LOW : s[k] < N.LOW) ? 'low' : ''}" data-need="${k}"><i style="width:${Math.round(s[k])}%"></i></span>`).join('')}</div></div>
             <div class="acts"><button class="mini-btn" data-a="feed" title="Покормить">🍖</button><button class="mini-btn" data-a="play" title="Поиграть">🎾</button><button class="mini-btn" data-a="${s.asleep ? 'wake' : 'sleep'}" title="${s.asleep ? 'Разбудить' : 'Уложить'}">${s.asleep ? '☀️' : '💤'}</button></div></div>`; }).join('');
         UI.show(`${UI.head('🦕 Мои динозавры', { back: true, sub: 'Желания и забота. Если не помочь — со временем справятся сами' })}
-          ${list.length ? `<div class="btn-row all-acts" style="margin-top:0"><button class="btn" id="dn-feedall">🍖 Покормить всех</button><button class="btn" id="dn-playall">🎾 Поиграть со всеми</button>${anyAwake ? '<button class="btn" id="dn-sleepall">💤 Уложить всех</button>' : '<button class="btn" id="dn-wakeall">☀️ Разбудить всех</button>'}</div>
+          ${list.length ? `<div class="qa-grid all-acts"><button class="qa" id="dn-feedall"><span class="e">🍖</span><span class="t">Покормить всех</span></button><button class="qa" id="dn-secret"><span class="e">🤫</span><span class="t">Тайно покормить своих</span></button>${anyAwake ? '<button class="qa" id="dn-sleepall"><span class="e">💤</span><span class="t">Уложить всех спать</span></button>' : '<button class="qa" id="dn-wakeall"><span class="e">☀️</span><span class="t">Разбудить всех</span></button>'}<button class="qa" id="dn-playall"><span class="e">🎾</span><span class="t">Поиграть со всеми</span></button></div>
           <div class="dino-list" id="dn-list">${rowsHtml()}</div>`
             : '<div class="empty"><div class="big">🥚</div>В парке пока никого нет.<br>Сфотографируй раскраску или запусти готового динозавра.</div><div class="btn-row"><button class="btn green" id="dn-add">🦖 Запустить динозавра</button></div>'}`, (p) => {
-          UI.wire(p, { back: () => go('menu') });
+          UI.wire(p, { back: backTo });
           const wire = () => {
             p.querySelectorAll('[data-card]').forEach(b => b.onclick = () => { const d = dino(b.dataset.card); if (!d) return; if (d.loc !== park.view) { park.view = d.loc; park.bg = d.loc; commit(); } go('card', d.uid); });
             p.querySelectorAll('.dino-row2 [data-a]').forEach(b => b.onclick = () => {
@@ -657,8 +694,9 @@
           wire();
           const a = p.querySelector('#dn-add'); if (a) a.onclick = () => go('ready');
           const fa = p.querySelector('#dn-feedall'); if (fa) fa.onclick = () => { park.dinos.filter(d => d.loc !== park.view).forEach(d => { const b = N.at(d); N.feed(d, 30); careFor(d, 'feed', b); }); commit(); feedAll(); };
-          const pa = p.querySelector('#dn-playall'); if (pa) pa.onclick = () => { playAll(); UI.close(); };
-          const sa = p.querySelector('#dn-sleepall'); if (sa) sa.onclick = () => { sleepAll(); go('dinos'); };
+          const pa = p.querySelector('#dn-playall'); if (pa) pa.onclick = () => { if (playAll() && !DEMO) Y.sendEvent(park, { type: 'playall' }); UI.close(); };
+          const se = p.querySelector('#dn-secret'); if (se) se.onclick = () => feedSecret();
+          const sa = p.querySelector('#dn-sleepall'); if (sa) sa.onclick = () => { sleepAll(); if (!DEMO) Y.sendEvent(park, { type: 'sleepall' }); go('dinos'); };
           const wa = p.querySelector('#dn-wakeall'); if (wa) wa.onclick = () => { wakeAll(); go('dinos'); };
           clearInterval(cardTimer); cardTimer = setInterval(refresh, 1500);
         }, { wide: true });
@@ -676,7 +714,7 @@
           <div class="shop">${Life.HATS.map(h => { const c = Life.hatCost(L, h), ok = can(c) || (h.alt && can(h.alt)), have = L.hats[h.id] || 0; return `<button class="shop-item" data-hat="${h.id}" ${ok ? '' : 'disabled'}><span class="big">${DP.Scene.HATS[h.id]}</span><span class="t">${h.name}${have ? ` · есть ${have}` : ''}</span><span class="s">${Life.costText(c)}${h.alt ? ' или ' + Life.costText(h.alt) : ''}</span></button>`; }).join('')}</div>
           <label class="lbl">🌟 Легендарный динозавр</label>
           <button class="shop-item wide" id="eg-legend" ${(L.tokens.legend > 0 || can(Life.LEGEND_COST) || can(Life.LEGEND_ALT)) ? '' : 'disabled'}><span class="big">🌟🦖</span><span class="t">Золотой динозавр${L.tokens.legend > 0 ? ' · подарок ждёт!' : ''}</span><span class="s">${L.tokens.legend > 0 ? 'Бесплатно' : Life.costText(Life.LEGEND_COST) + ' или ' + Life.costText(Life.LEGEND_ALT)} · сияет и чаще несёт редкие яйца</span></button>`, (p) => {
-          UI.wire(p, { back: () => go('menu') });
+          UI.wire(p, { back: backTo });
           p.querySelectorAll('[data-trade]').forEach(b => b.onclick = () => { if (Life.trade(park, b.dataset.trade)) { U.toast('🔁 Обмен состоялся!'); commit(); updateHud(); go('eggs'); } });
           p.querySelectorAll('[data-hat]').forEach(b => b.onclick = () => {
             const id = b.dataset.hat; if (!Life.buyHat(park, id)) return;
@@ -728,7 +766,7 @@
           <label class="lbl">🔥 Австралопитеки</label>
           ${L.tribe.length ? L.tribe.map(apeHtml).join('') : `<p class="note">Пока никого. ${nextApe ? `Первый австралопитек придёт, когда в парке будет ${nextApe.need}+ динозавра и пройдёт немного времени.` : ''}</p>`}
           ${L.tribe.length && nextApe ? `<p class="note">${nextApe.chief ? 'Когда кто-нибудь станет вождём ⭐, он позовёт ещё одного.' : `Ещё один придёт позже (нужно ${nextApe.need}+ динозавров).`}</p>` : ''}
-          <p class="note">⏳ Навыки растут, пока парк открыт (когда закрыт — вполсилы, не больше 12 часов).</p>`, (p) => UI.wire(p, { back: () => go('menu') }), { wide: true });
+          <p class="note">⏳ Навыки растут, пока парк открыт (когда закрыт — вполсилы, не больше 12 часов).</p>`, (p) => UI.wire(p, { back: backTo }), { wide: true });
       },
       /** Подарки: от динозавров и от Динопарка, ввод подарочного кода */
       gifts(code) {
@@ -741,7 +779,7 @@
           <label class="lbl">🔑 Подарочный код</label>
           <div class="btn-row" style="margin-top:0"><input class="field" id="gift-code" placeholder="DP1.…" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1" value="${U.esc(code || '')}"><button class="btn green" id="gift-redeem">Получить</button></div>
           <div class="note" id="gift-msg"></div>`, (p) => {
-          UI.wire(p, { back: () => go('menu') });
+          UI.wire(p, { back: backTo });
           p.querySelector('#gift-redeem').onclick = async () => {
             const msg = p.querySelector('#gift-msg'), btn = p.querySelector('#gift-redeem'); btn.disabled = true; msg.textContent = '⏳ Проверяем…';
             try { const r = await redeem(p.querySelector('#gift-code').value); msg.textContent = `✓ Получено: ${Life.giftEmoji(r.g)} ${Life.giftName(r.g)}${r.m ? ' — ' + r.m : ''}`; msg.className = 'note ok'; setTimeout(() => { if (current === 'gifts') go('gifts'); }, 1600); }
@@ -754,11 +792,11 @@
         const L = park.life;
         UI.show(`${UI.head('🏆 Достижения', { back: true, sub: `Получено ${L.ach.length} из ${Life.ACH.length}` })}
           <div class="ach-grid">${Life.ACH.map(a => { const done = L.ach.includes(a.id), v = Math.min(a.goal, a.val(L, park) || 0); return `<div class="ach ${done ? 'done' : ''}" data-ach="${a.id}"><div class="e">${a.e}</div><b>${a.name}</b><div class="s">${a.desc}</div>
-            ${done ? '<div class="ok">✓ Получено</div>' : `<div class="pr"><i style="width:${Math.round(v / a.goal * 100)}%"></i></div><div class="s">${v} / ${a.goal}</div>`}${a.reward ? `<div class="rw">Награда: ${Life.costText(a.reward)}</div>` : ''}</div>`; }).join('')}</div>`, (p) => UI.wire(p, { back: () => go('menu') }), { wide: true });
+            ${done ? '<div class="ok">✓ Получено</div>' : `<div class="pr"><i style="width:${Math.round(v / a.goal * 100)}%"></i></div><div class="s">${v} / ${a.goal}</div>`}${a.reward ? `<div class="rw">Награда: ${Life.costText(a.reward)}</div>` : ''}</div>`; }).join('')}</div>`, (p) => UI.wire(p, { back: backTo }), { wide: true });
       },
       /** Позвать друга и поделиться */
       async invite() {
-        UI.show(`${UI.head('💌 Позвать друга', { back: true })}<div class="spinner"></div>`, (p) => UI.wire(p, { back: () => go('menu') }), { wide: true });
+        UI.show(`${UI.head('💌 Позвать друга', { back: true })}<div class="spinner"></div>`, (p) => UI.wire(p, { back: backTo }), { wide: true });
         const url = await Life.inviteUrl(); if (current !== 'invite') return;
         const L = park.life, today = L.shareDay === Life.dayKey(Date.now());
         UI.show(`${UI.head('💌 Позвать друга и поделиться', { back: true, sub: 'Награды яйцами за друзей и за репост' })}
@@ -773,7 +811,7 @@
               <div class="btn-row"><button class="btn" id="inv-repost">📣 Поделиться</button></div>
               <p class="note" id="inv-day">${today ? '✓ Сегодня награда за репост уже получена' : '🥚 Награда за сегодня ещё доступна'}</p></div>
           </div>`, (p) => {
-          UI.wire(p, { back: () => go('menu') });
+          UI.wire(p, { back: backTo });
           p.querySelector('#inv-share').onclick = () => doShare('invite').then(() => { if (current === 'invite') go('invite'); });
           p.querySelector('#inv-repost').onclick = () => doShare('repost').then(() => { if (current === 'invite') go('invite'); });
           p.querySelector('#inv-copy').onclick = async () => { if (await copyText(url)) U.toast('🔗 Ссылка скопирована'); else U.toast('Скопируй ссылку вручную'); };
@@ -788,7 +826,7 @@
             : `<label class="lbl">Сообщение</label><textarea class="field" id="sp-text" maxlength="1000" rows="5" placeholder="Расскажите, что случилось или что придумали"></textarea>
               <label class="lbl">Как с вами связаться (необязательно)</label><input class="field" id="sp-contact" maxlength="80" placeholder="Telegram, телефон или почта">
               <div class="btn-row"><button class="btn green" id="sp-send">📨 Отправить</button></div><div class="note" id="sp-msg"></div>`}`, (p) => {
-          UI.wire(p, { back: () => go('menu') });
+          UI.wire(p, { back: backTo });
           const send = p.querySelector('#sp-send'); if (!send) return;
           send.onclick = async () => {
             const text = p.querySelector('#sp-text').value.trim(), contact = p.querySelector('#sp-contact').value.trim(), msg = p.querySelector('#sp-msg');
@@ -946,7 +984,6 @@
     ] };
   }
 
-  if (localStorage.getItem('dp_rings') === '1') scene.showNeeds = true;
   // открыть экран из адресной строки: park.html?id=..&open=menu|camera|card…
   const op = U.param('open');
   if (op === 'camera') openCamera();
