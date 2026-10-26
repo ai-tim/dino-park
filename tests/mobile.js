@@ -119,6 +119,29 @@ const CANVAS_PROBE = () => {
     await new Promise(r => setTimeout(r, 100)); return { x0: Math.round(x0), x1: Math.round(S.cam.x) };
   }, '(' + touch.toString() + ')');
   ok('v3: перетаскивание пальцем двигает парк', pan.x1 > pan.x0 + 50, JSON.stringify(pan));
+  // одним пальцем — только сдвиг: влево и вправо на одно и то же расстояние, зум и расстояние камеры не меняются,
+  // в том числе если от прошлого касания осталось «зависшее» (без pointerup) — раньше это превращало сдвиг влево в приближение
+  const sym = await page.evaluate(async (src) => {
+    const touch = eval(src), S = window.dpScene, w = (ms) => new Promise(r => setTimeout(r, ms));
+    const cd = () => { if (!S.camera || !S._target) return 0; const p = S.camera.position, t = S._target; return Math.hypot(p.x - t.X, p.y - t.Y, p.z - t.Z); };
+    const st = () => { if (S.updateCamera3) S.updateCamera3(); return { x: S.cam.x, z: S.cam.z, d: cd() }; };
+    S.follow = null; S.camT = null; S._inertia = null; S.cam.z = 1; S.cam.x = (S.W - S.VW) / 2; S.clampCam(); await w(100);
+    const drag = async (id, dx) => { touch('pointerdown', id, 200, 400); for (let i = 1; i <= 8; i++) { touch('pointermove', id, 200 + dx * i / 8, 400); await w(16); } touch('pointerup', id, 200 + dx, 400); S._inertia = null; await w(80); return st(); };
+    // «зависшее» касание справа: pointerdown без pointerup (как после системного жеста iOS)
+    const gh = (type, id, x, y) => { const c = S.c, r = c.getBoundingClientRect(); c.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', isPrimary: true, clientX: r.left + x, clientY: r.top + y, bubbles: true })); };
+    gh('pointerdown', 7, 330, 420);
+    const s0 = st(), L = await drag(1, -100), R = await drag(1, 100);
+    const pz0 = S.cam.z; document.querySelector('#zc-in').click(); await w(50); const pz1 = S.cam.z; document.querySelector('#zc-in').click(); await w(50); const pz2 = S.cam.z;
+    document.querySelector('#zc-out').click(); await w(50); const pz3 = S.cam.z;
+    S.resetZoom(); S.camT = null; S.cam.z = 1; S.clampCam();
+    const r2 = (v) => +v.toFixed(2);
+    return { dL: r2(L.x - s0.x), dR: r2(R.x - L.x), z: [r2(s0.z), r2(L.z), r2(R.z)], d: [r2(s0.d), r2(L.d), r2(R.d)], btn: [r2(pz0), r2(pz1), r2(pz2), r2(pz3)] };
+  }, '(' + touch.toString() + ')');
+  ok('камера: одним пальцем влево и вправо — равный и противоположный сдвиг, без зума (и с «зависшим» касанием)',
+    sym.dL > 50 && Math.abs(sym.dL + sym.dR) < 0.5 && sym.z.every(z => z === sym.z[0]) && sym.d.every(d => Math.abs(d - sym.d[0]) < 1e-6 + 0.01), JSON.stringify(sym));
+  ok('камера: кнопки + / − меняют зум', sym.btn[1] > sym.btn[0] && sym.btn[2] > sym.btn[1] && sym.btn[3] < sym.btn[2], JSON.stringify(sym.btn));
+  const zc = await page.evaluate(() => { const a = document.querySelector('#zoomctl').getBoundingClientRect(), h = document.querySelector('#hud').getBoundingClientRect(); const hit = document.elementFromPoint(a.left + a.width / 2, a.top + 8); return { l: a.left, r: a.right, t: a.top, b: a.bottom, vw: innerWidth, vh: innerHeight, hudB: h.bottom, onTop: !!(hit && hit.closest('#zoomctl')) }; });
+  ok('камера: кнопки зума на экране, не перекрывают верхнюю панель', zc.r <= zc.vw && zc.l > zc.vw / 2 && zc.t > zc.hudB && zc.b < zc.vh - 80 && zc.onTop, JSON.stringify(zc));
   const pinch = await page.evaluate(async (src) => {
     const touch = eval(src), S = window.dpScene, z0 = S.cam.z;
     touch('pointerdown', 1, 150, 300); touch('pointerdown', 2, 240, 300);

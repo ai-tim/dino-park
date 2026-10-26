@@ -1,4 +1,4 @@
-/* Динопарк — CSS для старых браузеров (tools/build-legacy.js). НЕ ПРАВИТЬ ВРУЧНУЮ. src:d20b8615528ba75f */
+/* Динопарк — CSS для старых браузеров (tools/build-legacy.js). НЕ ПРАВИТЬ ВРУЧНУЮ. src:e791dc3594547f43 */
 /* Динопарк — общий стиль: тёмные полупрозрачные панели (glassmorphism), крупные кнопки, эмодзи */
 :root {
   --panel: rgba(6, 30, 34, 0.62);
@@ -253,6 +253,9 @@ input[type=range] { width: 100%; accent-color: #3ddc84; height: 30px; }
 .hud button b { font-size: 14px; font-weight: 900; }
 .hud .dot { position: absolute; top: 5px; right: 5px; width: 9px; height: 9px; border-radius: 50%; background: #ff6b6b; box-shadow: 0 0 0 2px rgba(6,30,36,.8); }
 .hud .dot.hidden, .zoombar.hidden { display: none; }
+.zoomctl { position: fixed; right: calc(10px + 0px); right: calc(10px + env(safe-area-inset-right, 0px)); top: 50%; transform: translateY(-50%); z-index: 12; display: flex; flex-direction: column; gap: 6px; touch-action: manipulation; }
+.zoomctl button { width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(6, 30, 36, .6); color: #fff; font: inherit; font-size: 24px; font-weight: 900; line-height: 1; cursor: pointer; padding: 0; }
+.zoomctl button:active { transform: scale(.94); }
 .zoombar { position: fixed; left: 50%; transform: translateX(-50%); top: calc(62px + 0px); top: calc(62px + env(safe-area-inset-top, 0px)); z-index: 12; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 14px; border-radius: 999px; font-weight: 900; font-size: 14px; white-space: nowrap; }
 .demo-badge { top: calc(62px + 0px); top: calc(62px + env(safe-area-inset-top, 0px)); max-width: 94vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 @media (max-width: 720px) { .hud { gap: 4px; } .hud button { min-width: 40px; height: 40px; font-size: 18px; padding: 0 6px; } .zoombar { top: calc(58px + 0px); top: calc(58px + env(safe-area-inset-top, 0px)); } .demo-badge { top: calc(104px + 0px); top: calc(104px + env(safe-area-inset-top, 0px)); } }
@@ -421,6 +424,9 @@ html.no-flexgap .hud > * {
 }
 html.no-flexgap .hud button > * {
   margin: calc(3px / 2) calc(3px / 2);
+}
+html.no-flexgap .zoomctl > * {
+  margin: calc(6px / 2) calc(6px / 2);
 }
 html.no-flexgap .zoombar > * {
   margin: calc(10px / 2) calc(10px / 2);

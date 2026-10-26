@@ -110,15 +110,21 @@ window.DP = window.DP || {};
         const [a, b] = [...pts.values()], mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         pinch = { d: Math.max(10, Math.hypot(a.x - b.x, a.y - b.y)), z: this.cam.z, w: this.toWorld(mid.x, mid.y) };
       };
+      // Касания, у которых потерялось «отпускание» (iOS: системный жест у края экрана, открытие меню, сон), раньше
+      // оставались в pts навсегда — следующий палец считался «вторым» и одно перетаскивание превращалось в щипок
+      // (влево — приближение, вправо — упор в минимальный зум). Новый первый палец начинает жест с чистого листа.
+      const reset = () => { pts.clear(); pinch = null; };
       c.addEventListener('pointerdown', (ev) => {
         try { c.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+        if (ev.isPrimary || ev.pointerType === 'mouse') reset();
         pts.set(ev.pointerId, local(ev)); if (pts.size === 1) { this._moved = 0; vel = { x: 0, y: 0 }; this._inertia = null; }
         if (pts.size === 2) { startPinch(); this._moved = 99; }
       });
       c.addEventListener('pointermove', (ev) => {
         if (!pts.has(ev.pointerId)) return;
         const prev = pts.get(ev.pointerId), cur = local(ev); pts.set(ev.pointerId, cur);
-        if (pts.size >= 2 && pinch) {
+        if (pts.size > 2) return; // три пальца и больше — ничего не делаем
+        if (pts.size === 2 && pinch) {
           const [a, b] = [...pts.values()], mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
           const z = U().clamp(pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d, 1, this.zMax());
           this.cam = this.clampCam({ x: pinch.w.x - mid.x / z, y: pinch.w.y - mid.y / z, z }); this.camT = null; this.follow = null; return;
@@ -139,7 +145,12 @@ window.DP = window.DP || {};
           setTimeout(() => { if (!pts.size) this._moved = 0; }, 0);
         }
       };
-      c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+      c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up); c.addEventListener('lostpointercapture', up);
+      window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', up, true);
+      // все пальцы убраны (по данным touch-событий) — забываем любые «зависшие» касания
+      const tEnd = (ev) => { if (ev.touches && ev.touches.length === 0 && pts.size) { const had = pts.size; reset(); if (had && (this._moved || 0) > 9) this._dragEnd = performance.now(); } };
+      window.addEventListener('touchend', tEnd, true); window.addEventListener('touchcancel', tEnd, true);
+      window.addEventListener('blur', reset); document.addEventListener('visibilitychange', reset);
       c.addEventListener('wheel', (ev) => { ev.preventDefault(); const p = local(ev); if (ev.ctrlKey || Math.abs(ev.deltaY) > Math.abs(ev.deltaX)) this.zoomBy(Math.exp(-ev.deltaY * 0.0018), p.x, p.y); else { this.cam.x += ev.deltaX / this.cam.z; this.clampCam(); } this.follow = null; }, { passive: false });
       ['gesturestart', 'gesturechange'].forEach(n => c.addEventListener(n, (ev) => ev.preventDefault()));
     }

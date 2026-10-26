@@ -626,6 +626,17 @@
     zbar.innerHTML = '<span id="zb-name"></span><button class="chip" id="zb-out">🔍 Отдалить</button>';
     document.body.appendChild(zbar);
     zbar.querySelector('#zb-out').onclick = (e) => { e.stopPropagation(); scene.resetZoom(); };
+    // кнопки зума: + / − справа по центру (одним пальцем парк только двигается, зум — щипком, колёсиком или этими кнопками)
+    const zc = document.createElement('div'); zc.className = 'zoomctl'; zc.id = 'zoomctl';
+    zc.innerHTML = '<button type="button" id="zc-in" title="Приблизить" aria-label="Приблизить">+</button><button type="button" id="zc-out" title="Отдалить" aria-label="Отдалить">−</button>';
+    document.body.appendChild(zc);
+    const zoomStep = (f) => {
+      if (scene.follow) { const z = Math.min(scene.zMax(), Math.max(1, scene.follow.z * f)); if (z <= 1.02) scene.resetZoom(); else scene.follow.z = z; return; }
+      scene.zoomBy(f);
+    };
+    zc.querySelector('#zc-in').addEventListener('click', (e) => { e.stopPropagation(); zoomStep(1.35); });
+    zc.querySelector('#zc-out').addEventListener('click', (e) => { e.stopPropagation(); zoomStep(1 / 1.35); });
+    zc.addEventListener('wheel', (e) => { e.preventDefault(); zoomStep(Math.exp(-e.deltaY * 0.0018)); }, { passive: false });
     setInterval(() => {
       const f = scene.follow, e = f && scene.ent(f.uid), zoomed = scene.cam.z > 1.05;
       zbar.classList.toggle('hidden', !(e || zoomed));
@@ -708,7 +719,12 @@
               refresh();
             });
           };
-          const refresh = () => { const el = p.querySelector('#dn-list'); if (!el || current !== 'dinos') return; const h = rowsHtml(); if (el._h === h) return; el._h = h; el.innerHTML = h; wire(); }; // перерисовываем только при изменениях, чтобы не терять нажатия
+          const refresh = () => { const el = p.querySelector('#dn-list'); if (!el || current !== 'dinos') return; const h = rowsHtml(); if (el._h === h) return; el._h = h;
+            // кнопки не пересоздаём (иначе нажатие, попавшее на перерисовку, теряется): если набор строк и кнопок тот же — обновляем только текст и шкалы
+            const tmp = document.createElement('div'); tmp.innerHTML = h;
+            const sig = (root) => [].map.call(root.querySelectorAll('.dino-row2'), r => r.dataset.uid + ':' + (r.querySelector('.ava') ? r.querySelector('.ava').innerHTML : '') + ':' + [].map.call(r.querySelectorAll('[data-a]'), b => b.dataset.a).join(',')).join('|');
+            if (sig(tmp) === sig(el)) { const nr = tmp.querySelectorAll('.dino-row2'), or = el.querySelectorAll('.dino-row2'); for (let i = 0; i < nr.length; i++) { const a = or[i].querySelector('.mid'), b = nr[i].querySelector('.mid'); if (a && b && a.innerHTML !== b.innerHTML) a.innerHTML = b.innerHTML; } return; }
+            el.innerHTML = h; wire(); }; // перерисовываем только при изменениях, чтобы не терять нажатия
           wire();
           const a = p.querySelector('#dn-add'); if (a) a.onclick = () => go('ready');
           const fa = p.querySelector('#dn-feedall'); if (fa) fa.onclick = () => { park.dinos.filter(d => d.loc !== park.view).forEach(d => { const b = N.at(d); N.feed(d, 30); careFor(d, 'feed', b); }); commit(); feedAll(); };
