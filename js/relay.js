@@ -58,7 +58,7 @@ window.DP = window.DP || {};
       if (self.b.pass) { flags |= 0x40; pl.push(str16(self.b.pass)); }
       ws.send(packet(0x10, concat([str16('MQTT'), new Uint8Array([4, flags, 0, 60])].concat(pl))));
     };
-    ws.onmessage = function (ev) { if (ev.data instanceof ArrayBuffer) self.feed(new Uint8Array(ev.data)); };
+    ws.onmessage = function (ev) { self.rx = Date.now(); if (ev.data instanceof ArrayBuffer) self.feed(new Uint8Array(ev.data)); };
     ws.onerror = function () { /* дальше будет onclose */ };
     ws.onclose = function () {
       clearTimeout(to); clearInterval(self.ping);
@@ -91,7 +91,12 @@ window.DP = window.DP || {};
       if (body[1] !== 0) { try { self.ws.close(); } catch (e) { /* ignore */ } return; }
       self.open = true; self.tries = 0;
       Object.keys(self.subs).forEach(function (t) { self.sendSub(t); });
-      clearInterval(self.ping); self.ping = setInterval(function () { self.raw(new Uint8Array([0xC0, 0])); }, 25000);
+      // «живость»: PINGREQ каждые 15 с; если брокер молчит 40 с — сокет «завис» (сон телефона, смена сети), переподключаемся
+      self.rx = Date.now(); clearInterval(self.ping);
+      self.ping = setInterval(function () {
+        if (Date.now() - self.rx > 40000) { try { self.ws.close(); } catch (e) { /* ignore */ } return; }
+        self.raw(new Uint8Array([0xC0, 0]));
+      }, 15000);
       self.hub.changed();
     } else if (type === 3) { // PUBLISH
       var tl = (body[0] << 8) | body[1], topic = unutf8(body.subarray(2, 2 + tl)), qos = (h >> 1) & 3, off = 2 + tl + (qos ? 2 : 0);
@@ -116,7 +121,11 @@ window.DP = window.DP || {};
       Hub.conns = brokers().map(function (b) { return new Conn(b, Hub); });
       document.addEventListener('visibilitychange', function () { // iOS рвёт сокеты в фоне — по возвращении переподключаемся сразу
         if (document.hidden) return;
-        Hub.conns.forEach(function (c) { if (!c.open && !c.stopped) { clearTimeout(c.rt); if (!c.ws) c.connect(); } });
+        Hub.conns.forEach(function (c) {
+          if (!c.open && !c.stopped) { clearTimeout(c.rt); c.tries = 0; if (!c.ws) c.connect(); return; }
+          // сокет «открыт», но после сна мог умереть: пингуем и, если брокер молчит 5 с, переподключаемся
+          if (c.open && c.ws) { var t = Date.now(); c.raw(new Uint8Array([0xC0, 0])); setTimeout(function () { if (c.open && c.rx < t && c.ws) { try { c.ws.close(); } catch (e) { /* ignore */ } } }, 5000); }
+        });
       });
     },
     online: function () { return Hub.conns.filter(function (c) { return c.open; }).map(function (c) { return c.b.name; }); },
@@ -251,7 +260,7 @@ window.DP = window.DP || {};
   Host.prototype.startCode = function (code, exp) {
     var self = this; self.stopCode();
     if (!supported()) return Promise.resolve(false);
-    var c = { code: code, exp: exp || Date.now() + CODE_TTL, busy: {} };
+    var c = { code: code, exp: exp || Date.now() + CODE_TTL, busy: {}, replies: {} };
     self.code = c;
     return pairTopic(code).then(function (topic) {
       if (self.code !== c) return false;
@@ -262,10 +271,19 @@ window.DP = window.DP || {};
       return true;
     });
   };
-  Host.prototype.stopCode = function () { var c = this.code; if (!c) return; this.code = null; clearTimeout(c.timer); if (c.fn) Hub.unsub(c.topic + '/h', c.fn); };
+  Host.prototype.stopCode = function () {
+    var c = this.code; if (!c) return; this.code = null; clearTimeout(c.timer);
+    if (!c.fn) return;
+    // код уже сработал — ещё минуту слушаем повторные «привет» того же ТВ и повторяем ответ (он мог потеряться: QoS 0, разные брокеры)
+    if (c.used) setTimeout(function () { Hub.unsub(c.topic + '/h', c.fn); }, 60000);
+    else Hub.unsub(c.topic + '/h', c.fn);
+  };
+  Host.prototype.codeInfo = function () { var c = this.code; return c ? { code: c.code, exp: c.exp, used: !!c.used } : null; };
   Host.prototype.onHello = function (c, str) {
     var self = this, m; try { m = JSON.parse(str); } catch (e) { return; }
-    if (!m || m.v !== 4 || !m.id || !m.pub || !m.proof || c.busy[m.id] || c.used || Date.now() > c.exp) return;
+    if (!m || m.v !== 4 || !m.id || !m.pub || !m.proof) return;
+    if (c.replies[m.id]) { Hub.send(c.topic + '/w/' + m.id, c.replies[m.id]); return; } // повтор: ТВ не получил ответ — шлём ещё раз
+    if (c.busy[m.id] || c.used || Date.now() > c.exp) return; // срок — по часам ЭТОГО телефона (часы ТВ не сравниваем)
     c.busy[m.id] = 1;
     var K, mine;
     pairKey(c.code, m.pub).then(function (k) { K = k; return open(K, m.proof); }).then(function (pr) {
@@ -274,7 +292,8 @@ window.DP = window.DP || {};
     }).then(function (me) { mine = me; return sessionSecret(mine, m.pub, c.code, m.pub, mine.pub); }).then(function (S) {
       var name = self.park ? self.park.name : '';
       return seal(K, { ok: 1, park: { id: self.parkId, name: name } }).then(function (box) {
-        Hub.send(c.topic + '/w/' + m.id, JSON.stringify({ v: 4, pub: mine.pub, box: box }));
+        c.replies[m.id] = JSON.stringify({ v: 4, pub: mine.pub, box: box });
+        Hub.send(c.topic + '/w/' + m.id, c.replies[m.id]);
         return self.addSession(b64(S), Date.now(), String(m.dev || 'Телевизор').slice(0, 40));
       });
     }).then(function () { if (self.code === c) self.stopCode(); self.emit('paired', {}); }, function () { /* неверный код — молча игнорируем */ });
@@ -284,11 +303,19 @@ window.DP = window.DP || {};
   function Viewer() { this.handlers = {}; this.assets = {}; this.ss = null; this.last = 0; this.raw = null; this.lastAt = 0; }
   Viewer.prototype.on = Host.prototype.on;
   Viewer.prototype.emit = Host.prototype.emit;
-  Viewer.prototype.join = function (code, dev) {
-    var self = this;
-    if (!supported()) return Promise.reject(new Error('Этот браузер не поддерживает защищённое соединение (нужен https и WebCrypto)'));
-    return Hub.ready(9000).then(function (ok) {
-      if (!ok) throw new Error('Нет связи с интернет-ретранслятором. Проверьте интернет на телевизоре и попробуйте ещё раз');
+  function fail(kind, msg) { var e = new Error(msg); e.kind = kind; return e; }
+  /** Самопроверка шифрования (старые ТВ: Samsung Tizen, LG webOS) — понятная ошибка вместо «код не найден» */
+  function selfTest() {
+    if (!supported()) return Promise.reject(fail('crypto', 'Браузер этого телевизора не поддерживает защищённое соединение (нужны https и WebCrypto). ' + (window.isSecureContext === false ? 'Откройте адрес через https://.' : 'Попробуйте другой браузер или приставку.')));
+    return Promise.all([ecdh(), pairKey('00000', 'x')]).then(function () { return true; }, function (e) { throw fail('crypto', 'Шифрование в браузере телевизора не работает (' + ((e && e.name) || 'WebCrypto') + '). Попробуйте обновить ПО телевизора или другой браузер.'); });
+  }
+  Viewer.prototype.join = function (code, dev, onStatus) {
+    var self = this, st = function (t) { if (onStatus) try { onStatus(t); } catch (e) { /* ignore */ } };
+    code = String(code || '').replace(/[\uFF10-\uFF19]/g, function (d) { return String.fromCharCode(d.charCodeAt(0) - 0xFF10 + 48); }).replace(/\D/g, '');
+    st('⏳ Подключаемся к интернет-ретранслятору…');
+    return selfTest().then(function () { return Hub.ready(15000); }).then(function (ok) {
+      if (!ok) throw fail('net', 'Не удалось связаться с сервером соединения (интернет-ретранслятором). Проверьте интернет на телевизоре и нажмите «Попробовать ещё раз».');
+      st('⏳ Ищем телефон с этим кодом… (' + Hub.online().join(', ') + ')');
       return Promise.all([ecdh(), pairTopic(code)]);
     }).then(function (r) {
       var me = r[0], topic = r[1], id = hex(rnd(6));
@@ -308,8 +335,15 @@ window.DP = window.DP || {};
             Hub.sub(topic + '/w/' + id, fn);
             var hello = JSON.stringify({ v: 4, id: id, pub: me.pub, proof: proof, dev: dev || 'Телевизор' });
             var say = function () { Hub.send(topic + '/h', hello); };
-            setTimeout(say, 400); rep = setInterval(say, 2000);
-            timer = setTimeout(function () { if (done) return; done = true; finish(); rej(new Error('Код не найден или истёк. Откройте на телефоне «📺 ТВ», получите новый код и не закрывайте парк на телефоне')); }, 16000);
+            // «привет» повторяем каждые 2 с через ВСЕ подключённые брокеры (и те, что подключатся позже) — ждём до 60 с:
+            // телефон мог «уснуть» (экран погас) и переподключиться, ответ мог потеряться
+            var t0 = Date.now();
+            setTimeout(say, 400); rep = setInterval(function () { say(); var left = 60 - Math.round((Date.now() - t0) / 1000); if (left > 0 && left % 10 === 0) st('⏳ Ждём ответ телефона… ещё ' + left + ' с. Держите парк открытым на телефоне (экран «📺 ТВ»).'); }, 2000);
+            timer = setTimeout(function () {
+              if (done) return; done = true; finish();
+              rej(Hub.online().length ? fail('nophone', 'Телефон с кодом ' + code + ' не ответил. Проверьте код и что на телефоне открыт парк (экран «📺 ТВ», код ещё действует), затем нажмите «Попробовать ещё раз».')
+                : fail('net', 'Пропала связь с сервером соединения (интернет-ретранслятором). Проверьте интернет на телевизоре и нажмите «Попробовать ещё раз».'));
+            }, 60000);
           });
         });
       });
@@ -371,7 +405,7 @@ window.DP = window.DP || {};
 
   var hosts = {};
   DP.relay = {
-    supported: supported, hub: Hub, brokers: brokers, CODE_TTL: CODE_TTL,
+    supported: supported, selfTest: selfTest, hub: Hub, brokers: brokers, CODE_TTL: CODE_TTL,
     host: function (parkId) { return hosts[parkId] || (hosts[parkId] = new Host(parkId)); },
     viewer: function () { return DP.relay._v || (DP.relay._v = new Viewer()); },
     savedTv: Viewer.saved,

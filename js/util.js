@@ -1,5 +1,9 @@
 /* Динопарк — общие утилиты */
 window.DP = window.DP || {};
+// старые браузеры телевизоров (Samsung Tizen 4–5: Chromium 56–63): мелкие полифилы
+if (!String.prototype.padStart) String.prototype.padStart = function (n, c) { var s = String(this); c = c == null ? ' ' : String(c); while (s.length < n) s = c + s; return s.length > n && c.length > 1 ? s.slice(s.length - n) : s; };
+if (!String.prototype.padEnd) String.prototype.padEnd = function (n, c) { var s = String(this); c = c == null ? ' ' : String(c); while (s.length < n) s += c; return s.slice(0, Math.max(n, String(this).length)); };
+if (window.Promise && !Promise.prototype.finally) Promise.prototype.finally = function (f) { return this.then(function (v) { return Promise.resolve(f()).then(function () { return v; }); }, function (e) { return Promise.resolve(f()).then(function () { throw e; }); }); };
 (function () {
   const INIT_Q = new URLSearchParams(location.search); // параметры при открытии (адрес потом чистится)
   const ALPH = 'abcdefghijkmnpqrstuvwxyz23456789';

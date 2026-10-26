@@ -98,15 +98,20 @@
   async function join(code) {
     if (joining) return;
     $('#err').textContent = '';
+    code = String(code || '').replace(/[\uFF10-\uFF19]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFF10 + 48)).replace(/\D/g, '');
     if (!/^\d{5}$/.test(code)) { $('#err').textContent = 'Нужно ввести 5 цифр'; return; }
     joining = true; $('#go').disabled = true; $('#err').textContent = '⏳ Подключаемся к телефону…';
-    try { show(await Y.tvJoin(code)); history.replaceState(null, '', 'tv.html'); }
-    catch (e) { $('#err').textContent = '⚠️ ' + e.message; }
+    try { show(await Y.tvJoin(code, (t) => { $('#err').textContent = t; })); history.replaceState(null, '', 'tv.html'); }
+    catch (e) {
+      // разные причины — разные тексты: нет связи с ретранслятором / телефон не ответил / браузер ТВ не умеет шифрование
+      const el = $('#err'); el.textContent = (e.kind === 'net' ? '📡 ' : e.kind === 'crypto' ? '🔒 ' : '⚠️ ') + e.message; el.dataset.kind = e.kind || 'code';
+      if (e.kind !== 'crypto') { const b = document.createElement('button'); b.className = 'btn'; b.id = 'retry'; b.textContent = '🔄 Попробовать ещё раз'; b.style.marginTop = '10px'; b.onclick = () => join($('#code').value.trim()); el.appendChild(document.createElement('br')); el.appendChild(b); setTimeout(() => b.focus(), 50); }
+    }
     finally { joining = false; $('#go').disabled = false; }
   }
   $('#go').onclick = () => join($('#code').value.trim());
   $('#code').onkeydown = (e) => { if (e.key === 'Enter' || e.keyCode === 13) join($('#code').value.trim()); };
-  $('#code').oninput = () => { const v = $('#code').value.replace(/\D/g, '').slice(0, 5); if (v !== $('#code').value) $('#code').value = v; };
+  $('#code').oninput = () => { const v = $('#code').value.replace(/[\uFF10-\uFF19]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFF10 + 48)).replace(/\D/g, '').slice(0, 5); if (v !== $('#code').value) $('#code').value = v; };
   $('#fs').onclick = () => U.toggleFullscreen();
   $('#exit').onclick = () => { sessionStorage.removeItem('dp_tv'); if (Y.viewer) Y.viewer.forget(); location.href = 'tv.html'; };
 

@@ -144,6 +144,9 @@ window.DP = window.DP || {};
     /** Временный 5-значный код для ТВ (5 минут) */
     async tvCode(park) {
       if (mode === 'server') { try { const r = await request({ t: 'tvcode', id: park.id, pin: park.pin }); return { code: r.code, exp: r.exp, server: true }; } catch (e) { console.warn(e); } }
+      // тот же ещё действующий и не использованный код — не меняем (экран «ТВ» перерисовывается, пока человек вводит код на пульте)
+      const ci = host && host.parkId === park.id && host.codeInfo ? host.codeInfo() : null;
+      if (ci && !ci.used && ci.exp - Date.now() > 90000) { host.push(park); return { code: ci.code, exp: ci.exp, server: false, relay: true }; }
       const code = DP.util.code5(), exp = Date.now() + 5 * 60 * 1000;
       S().setTvCode(code, park.id, exp); // тот же браузер (другая вкладка) — сразу
       let relay = false;
@@ -151,8 +154,8 @@ window.DP = window.DP || {};
       return { code, exp, server: false, relay };
     },
     /** ТВ: войти по 5-значному коду, получить парк и подписаться только на чтение */
-    async tvJoin(code) {
-      code = String(code || '').trim();
+    async tvJoin(code, onStatus) {
+      code = String(code || '').replace(/[\uFF10-\uFF19]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFF10 + 48)).replace(/\D/g, '');
       if (mode === 'server') {
         try { const r = await request({ t: 'tvjoin', code }); sub = { id: r.park.id, tv: true, token: r.token }; API.tvToken = r.token; return r.park; }
         catch (e) { if (!/не найден|истёк/i.test(e.message)) throw e; /* пробуем локально */ var serr = e; }
@@ -163,7 +166,7 @@ window.DP = window.DP || {};
       if (!R()) throw (serr || new Error('Код не найден или истёк. Получите новый код в меню «📺 ТВ».'));
       // другое устройство: сопряжение через интернет-ретранслятор
       const v = useViewer(); sub = { id: null, tv: true, relay: true };
-      const p = await v.join(code, /Web0S|webOS|SmartTV|Tizen/i.test(navigator.userAgent) ? 'Телевизор' : 'Экран');
+      const p = await v.join(code, /Web0S|webOS|SmartTV|SMART-TV|Tizen/i.test(navigator.userAgent) ? 'Телевизор' : 'Экран', onStatus);
       sub.id = p.id; API.tvToken = null; API.tvRelay = true; return p;
     },
     /** ТВ: после перезагрузки страницы — следить за парком по id (без PIN) */
