@@ -106,9 +106,9 @@ async function pair(combo, first) {
 
 (async () => {
   let first = true, skipped = false;
-  for (const c of PAIRS) { const r = await pair(c, first); if (r === 'skip') { skipped = true; break; } first = false; }
+  for (const c of PAIRS) { const r = await pair(c, first); if (r === 'skip') { skipped = true; if (results.length) ok(`[${c}] нет связи с брокерами — пара пропущена`, false); break; } first = false; }
   for (const b of Object.values(browsers)) await b.close().catch(() => {});
-  if (skipped) { console.log('⏭️ Нет связи с публичными брокерами — тест сопряжения через интернет пропущен'); process.exit(0); }
+  if (skipped && !results.length) { console.log('⏭️ Нет связи с публичными брокерами — тест сопряжения через интернет пропущен'); process.exit(0); }
   const failed = results.filter(r => !r.pass).length;
   const errs = [...new Set(errors)];
   if (errs.length) console.log('Ошибки в консоли:\n  ' + errs.join('\n  '));
