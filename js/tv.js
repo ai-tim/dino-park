@@ -46,18 +46,19 @@
     wake(); linkState();
   }
   // слабая видеокарта телевизора. v5: сначала сцена сама снижает разрешение (Scene3D.adaptRes, обратимо). Если и это не помогло —
-  // после 10 с разогрева и 5 замеров подряд (10 с) меньше 12 кадров/с: шаг 1 — детализация ниже, шаг 2 — 2D.
+  // после 10 с разогрева и 5 замеров подряд (10 с) меньше 12 кадров/с (или 3 замера меньше 4 кадров/с): шаг 1 — детализация ниже, шаг 2 — 2D.
   // Решение хранится 36 ч (dp.perf), потом телевизор снова пробует полное качество.
   function watchFps() {
     if (!scene.is3d) return;
-    let f0 = scene.frames || 0, t0 = Date.now(), bad = 0;
+    let f0 = scene.frames || 0, t0 = Date.now(), bad = 0, worst = 0;
     const warm = Date.now() + 10000;
     const iv = setInterval(() => {
       if (!scene || !scene.is3d) return clearInterval(iv);
       const fps = ((scene.frames || 0) - f0) * 1000 / (Date.now() - t0); f0 = scene.frames || 0; t0 = Date.now();
-      if (document.hidden || Date.now() < warm) { bad = 0; return; }
+      if (document.hidden || Date.now() < warm) { bad = 0; worst = 0; return; }
       bad = fps < 12 && (scene._rs || 1) <= 0.6 ? bad + 1 : 0;
-      if (bad >= 5 && !U.param('r') && !U.param('q')) {
+      worst = fps < 4 ? worst + 1 : 0; // 1–3 кадра/с: снижением разрешения уже не спасти — сразу ступенька вниз
+      if ((bad >= 5 || worst >= 3) && !U.param('r') && !U.param('q')) {
         clearInterval(iv);
         const P = DP.Scene.PERF, next = P.quality === 'high' ? 'mid' : P.quality === 'mid' ? 'low' : null;
         try { localStorage.setItem('dp.perf', JSON.stringify(next ? { v: 5, q: next, t: Date.now() } : { v: 5, q: 'low', r: '2d', t: Date.now() })); } catch (e) { /* ignore */ }

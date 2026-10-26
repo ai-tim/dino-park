@@ -76,6 +76,9 @@ async function pair(combo, first) {
   await tv.waitForTimeout(1500);
   ok(`[${label}] ТВ: телефон на связи`, /на связи/.test(await tv.textContent('#tvlink')));
   ok(`[${label}] ТВ: желаний над головами нет`, await tv.evaluate(() => window.dpScene.opts.showNeeds === false && window.dpScene.opts.needHint === false));
+  // v5: ТВ рисует в родном разрешении 1920×1080 (без растягивания), со сглаживанием и тон-маппингом
+  const rr = await tv.evaluate(() => { const s = window.dpScene; if (!s.is3d) return { is3d: false }; const rs0 = s._rs || 1; if (s.setRenderScale) s.setRenderScale(1); s.resize && s.resize(); const g = s.gpuStats(); return { is3d: true, rs0: +rs0.toFixed(2), size: [s.c.width, s.c.height], dpr: s.dpr, aa: g.aa, tm: g.toneMapping, q: DP.Scene.PERF.quality }; });
+  ok(`[${label}] ТВ: 3D в родном разрешении 1920×1080, сглаживание включено`, !rr.is3d || (rr.size[0] === 1920 && rr.size[1] === 1080 && rr.aa !== '0' && rr.tm > 0), JSON.stringify(rr));
   // события с телефона
   await phone.evaluate(() => DP.ui.close()); await phone.evaluate(() => window.dpPark.feedAll());
   const fed = await tv.waitForFunction(() => window.dpScene.food.length > 0 || /Обед|корм/i.test(document.querySelector('#tvtoast').textContent), null, { timeout: 15000 }).then(() => true).catch(() => false);
