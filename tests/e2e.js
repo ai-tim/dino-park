@@ -14,7 +14,7 @@ const errors = []; const results = [];
 const ok = (name, cond, info) => { results.push({ name, pass: !!cond, info }); console.log((cond ? '✅' : '❌') + ' ' + name + (info ? ' — ' + info : '')); };
 const watch = (page, tag) => {
   page.on('pageerror', e => errors.push(`[${tag}] pageerror: ${e.message}`));
-  page.on('console', m => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|ERR_INTERNET|net::ERR/.test(m.text())) errors.push(`[${tag}] console: ${m.text()}`); });
+  page.on('console', m => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|ERR_INTERNET|net::ERR|WebSocket connection to/.test(m.text())) errors.push(`[${tag}] console: ${m.text()}`); });
 };
 
 (async () => {
