@@ -1010,5 +1010,6 @@
   else if (!park.dinos.length && !localStorage.getItem('dp_onboarded') && !DEMO) go('onboarding');
   else if (park.dinos.length && !localStorage.getItem('dp_news_v3')) go('news');
   v3Start();
+  if (window.DPBOOT) window.DPBOOT.ready = true; // загрузчик (js/boot.js): страница запустилась
   window.dpPark = { get park() { return park; }, screens, processPhoto, feedAll, feedSecret, travelTo, newDino, commit, mode, owner: ME, demo: DEMO, lifeTick, pickup, startHide, closeUp, playAll, sleepAll, redeem, doShare, lifeEvents };
-})();
+})().catch(function (e) { if (window.DPBOOT && window.DPBOOT.fail) window.DPBOOT.fail(e, 'запуск'); else throw e; });

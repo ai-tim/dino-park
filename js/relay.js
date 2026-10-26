@@ -19,7 +19,7 @@ window.DP = window.DP || {};
   ];
   var PREFIX = 'dinopark/v4/', CHUNK = 24000, CODE_TTL = 5 * 60 * 1000;
   var te = window.TextEncoder ? new TextEncoder() : null, td = window.TextDecoder ? new TextDecoder() : null;
-  var cryptoObj = window.crypto || window.msCrypto, subtle = cryptoObj && cryptoObj.subtle;
+  var cryptoObj = window.crypto || window.msCrypto, subtle = (cryptoObj && cryptoObj.subtle) || window.DP_SUBTLE; // DP_SUBTLE — js/legacy/crypto.js (нет WebCrypto)
 
   function brokers() {
     var cfg = window.DP_CONFIG || {}, list = cfg.RELAYS || DEFAULT_BROKERS, m = /[?&#]relay=([^&#]+)/.exec(location.href);
@@ -307,7 +307,7 @@ window.DP = window.DP || {};
   /** Самопроверка шифрования (старые ТВ: Samsung Tizen, LG webOS) — понятная ошибка вместо «код не найден» */
   function selfTest() {
     if (!supported()) return Promise.reject(fail('crypto', 'Браузер этого телевизора не поддерживает защищённое соединение (нужны https и WebCrypto). ' + (window.isSecureContext === false ? 'Откройте адрес через https://.' : 'Попробуйте другой браузер или приставку.')));
-    return Promise.all([ecdh(), pairKey('00000', 'x')]).then(function () { return true; }, function (e) { throw fail('crypto', 'Шифрование в браузере телевизора не работает (' + ((e && e.name) || 'WebCrypto') + '). Попробуйте обновить ПО телевизора или другой браузер.'); });
+    return Promise.all([ecdh(), subtle._js ? 0 : pairKey('00000', 'x')]) /* JS-вариант медленный — PBKDF2 не гоняем зря */.then(function () { return true; }, function (e) { throw fail('crypto', 'Шифрование в браузере телевизора не работает (' + ((e && e.name) || 'WebCrypto') + '). Попробуйте обновить ПО телевизора или другой браузер.'); });
   }
   Viewer.prototype.join = function (code, dev, onStatus) {
     var self = this, st = function (t) { if (onStatus) try { onStatus(t); } catch (e) { /* ignore */ } };

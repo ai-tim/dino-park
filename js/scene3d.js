@@ -603,6 +603,18 @@ window.DP = window.DP || {};
       if (!s._failed && s.renderer) return s;
       s.destroy();
     }
-    return new Base(canvas, opts);
+    let c2 = null; try { c2 = canvas.getContext && canvas.getContext('2d'); } catch (e) { /* нет */ }
+    if (!c2) return stubScene(canvas, new Error('нет 2D canvas'));
+    try { return new Base(canvas, opts); } catch (e) { return stubScene(canvas, e); }
   };
+  // совсем без графики (нет даже 2D canvas) — пустая сцена с теми же методами: остальная страница работает, видна подсказка
+  function stubScene(canvas, err) {
+    if (window.DPBOOT) window.DPBOOT.log(err, 'нет 2D-графики');
+    const s = { is3d: false, stub: true, ents: [], food: [], balls: [], frames: 0, opts: {}, c: canvas };
+    Object.getOwnPropertyNames(Base.prototype).forEach((k) => { if (k !== 'constructor') s[k] = function () { return null; }; });
+    const n = document.createElement('div'); n.className = 'glass'; n.textContent = '🦖 Этот браузер не умеет рисовать графику — парк работает, но без картинки. Попробуйте другой браузер.';
+    n.setAttribute('style', 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);padding:12px 18px;z-index:4;max-width:90%;text-align:center');
+    (document.body || document.documentElement).appendChild(n);
+    return s;
+  }
 })();

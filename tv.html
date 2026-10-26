@@ -9,37 +9,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
   <link rel="stylesheet" href="css/style.css">
-  <script>
-    /* ES5-загрузчик (без let/=>/классов — работает даже в самых старых браузерах ТВ). Ловит ошибки и вместо пустого экрана
-       показывает понятное сообщение; журнал ошибок — в localStorage «dp.errors» и window.DPBOOT.errors. */
-    (function () {
-      var W = window, B = W.DPBOOT = { errors: [], ready: false, t0: new Date().getTime(), mode: '' };
-      function txt(e) { return e ? (e.message || String(e)) + (e.stack ? '' : '') : 'неизвестная ошибка'; }
-      B.log = function (e, where) {
-        var rec = { t: new Date().toISOString ? new Date().toISOString() : String(new Date()), m: txt(e), w: where || '', ua: navigator.userAgent, mode: B.mode };
-        B.errors.push(rec);
-        try { var L = JSON.parse(localStorage.getItem('dp.errors') || '[]'); L.push(rec); localStorage.setItem('dp.errors', JSON.stringify(L.slice(-15))); } catch (x) { /* нет хранилища */ }
-        try { console.error('[Динопарк]', rec.m, rec.w); } catch (x) { /* нет консоли */ }
-        return rec;
-      };
-      B.fail = function (e, where, hint) {
-        var rec = B._now ? B.errors[B.errors.length - 1] || B.log(e, where) : B.log(e, where);
-        if (B.ready && !hint) return; // экран уже работает — не закрываем его из-за мелкой ошибки, только журнал
-        // ошибка во время запуска: даём странице 3 с — если экран ввода кода всё-таки заработал, сообщение не нужно
-        if (!hint && !B._now) { setTimeout(function () { if (!B.ready) { B._now = true; B.fail(e, where); B._now = false; } }, 3000); return; }
-        var d = document.getElementById('bootmsg');
-        if (!d) { d = document.createElement('div'); d.id = 'bootmsg'; d.className = 'boot-msg'; (document.body || document.documentElement).appendChild(d); }
-        d.innerHTML = '<div class="boot-box"><div style="font-size:54px">🦖</div><h2>Динопарк не запустился на этом экране</h2>' +
-          '<p>' + (hint || 'Браузер телевизора не смог выполнить страницу.') + '</p>' +
-          '<p class="boot-tip">Что попробовать: нажмите «Перезагрузить»; обновите ПО телевизора; откройте сайт в другом браузере на ТВ (например, Chrome или Яндекс Браузер на Android TV) — или подключите телефон к ТВ по HDMI / трансляции экрана.</p>' +
-          '<button class="btn green" id="bootre">🔄 Перезагрузить</button>' +
-          '<p class="boot-tech">Для поддержки: ' + String(rec.m).replace(/[<>&]/g, '') + (rec.w ? ' · ' + String(rec.w).replace(/[<>&]/g, '') : '') + ' · ' + B.mode + '<br>' + navigator.userAgent.replace(/[<>&]/g, '') + '</p></div>';
-        var b = document.getElementById('bootre'); if (b) { b.onclick = function () { location.reload(); }; try { b.focus(); } catch (x) { /* */ } }
-      };
-      W.onerror = function (msg, src, line, col, err) { B.fail(err || msg, (src ? String(src).split('/').pop() : '') + (line ? ':' + line : '')); };
-      if (W.addEventListener) W.addEventListener('unhandledrejection', function (ev) { B.log(ev && ev.reason, 'promise'); });
-    })();
-  </script>
   <style>
     /* без inset/gap — старые браузеры телевизоров (Chromium 68–86) */
     body { background: #04121a; background: radial-gradient(circle at 50% 30%, #0f3a3f, #04121a 70%); }
@@ -62,13 +31,6 @@
     .tv-name.fade { opacity: 0; }
     .tv-link { position: fixed; right: 68px; bottom: 14px; z-index: 6; padding: 8px 14px; font-weight: 800; font-size: 16px; }
     .tv-link.hidden { display: none; }
-    .boot-msg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 50; background: #04121a; color: #fff; display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center; -webkit-box-pack: center; -webkit-justify-content: center; justify-content: center; padding: 20px; overflow: auto; font-family: Nunito, Arial, sans-serif; }
-    .boot-box { width: 760px; max-width: 100%; text-align: center; font-size: 22px; line-height: 1.4; }
-    .boot-box h2 { font-size: 34px; margin: 6px 0 10px; }
-    .boot-tip { color: #cfe; font-size: 19px; }
-    .boot-tech { color: #8aa; font-size: 14px; margin-top: 18px; word-break: break-all; }
-    .boot-box .btn { font-size: 26px; min-height: 64px; padding: 0 28px; }
-    .boot-box .btn:focus { outline: 4px solid #ffd43b; outline-offset: 2px; }
   </style>
 </head>
 <body class="tv-page">
@@ -90,29 +52,7 @@
   <div class="tv-link glass hidden" id="tvlink"></div>
   <div class="tv-toast glass" id="tvtoast"></div>
 
-  <script>
-    /* Выбор сборки: современная (ES2017, с 3D) или наследная ES5 (js/legacy, только 2D) для старых ТВ.
-       ?legacy=1 — принудительно наследная (для проверки). */
-    (function () {
-      var B = window.DPBOOT, modern = true, list;
-      var MODERN = ["js/util.js", "js/music.js", "js/store.js", "js/needs.js", "js/voices.js", "js/dinos.js", "js/backgrounds.js", "js/scene.js", "js/life.js", "js/creatures.js", "js/vendor/three.dino.min.js", "js/dino3d.js", "js/nature3d.js", "js/things3d.js", "js/scene3d.js", "js/config.js", "js/relay.js", "js/sync.js", "js/tv.js"];
-      var LEGACY = ["js/legacy/tv-1.js", "js/config.js", "js/legacy/tv-2.js"];
-      try { new Function('"use strict"; async function a() { await 0; } class K { m() { return `${1}`; } } let { x = 1 } = {}; const f = (...r) => r; for (const v of [1]) {}'); } catch (e) { modern = false; }
-      if (!window.Promise || !window.Map || !window.WeakMap || !window.Symbol || !Object.assign || !Array.prototype.includes || !Object.entries || !window.TextEncoder) modern = false;
-      if (/[?&]legacy=1/.test(location.search)) modern = false;
-      B.mode = modern ? 'modern' : 'legacy';
-      list = modern ? MODERN : LEGACY;
-      var head = document.getElementsByTagName('head')[0], i, left = list.length, failed = false;
-      for (i = 0; i < list.length; i++) (function (src) {
-        var s = document.createElement('script'); s.src = src; s.async = false;
-        s.onload = function () { left--; };
-        s.onerror = function () { if (failed) return; failed = true; B.fail(new Error('не загрузился файл ' + src), 'сеть', 'Не удалось загрузить файлы сайта. Проверьте интернет на телевизоре и нажмите «Перезагрузить».'); };
-        head.appendChild(s);
-      })(list[i]);
-      // сторож: если через 25 с экран ввода кода так и не заработал — показываем, что случилось, вместо пустой страницы
-      setTimeout(function () { if (!B.ready && !failed) B.fail(new Error(left > 0 ? 'файлы ещё загружаются (' + left + ')' : 'скрипты не запустились'), 'сторож', left > 0 ? 'Сайт загружается слишком долго. Проверьте интернет на телевизоре и нажмите «Перезагрузить».' : 'Браузер телевизора не смог запустить страницу.'); }, 25000);
-    })();
-  </script>
-  <noscript><div class="boot-msg"><div class="boot-box"><h2>Включите JavaScript</h2><p>Без JavaScript Динопарк не работает.</p></div></div></noscript>
+  <script src="js/boot.js" data-modern='["js/util.js", "js/music.js", "js/store.js", "js/needs.js", "js/voices.js", "js/dinos.js", "js/backgrounds.js", "js/scene.js", "js/life.js", "js/creatures.js", "js/vendor/three.dino.min.js", "js/dino3d.js", "js/nature3d.js", "js/things3d.js", "js/scene3d.js", "js/config.js", "js/relay.js", "js/sync.js", "js/tv.js"]' data-legacy='["js/legacy/polyfills.js", "js/legacy/tv-1.js", "js/config.js", "js/legacy/tv-2.js"]' data-css-legacy="css/legacy/style.css"></script>
+  <noscript><p style="text-align:center;font-size:26px;color:#fff;padding:40px">Включите JavaScript: без него Динопарк не работает.</p></noscript>
 </body>
 </html>

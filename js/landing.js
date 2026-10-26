@@ -43,4 +43,5 @@
   // превью листа-раскраски
   $('#lp-sheet').innerHTML = DP.Template.pageSVG('trex', 'outline', 'width="100%" viewBox="0 0 297 210" preserveAspectRatio="xMidYMid meet"');
   window.dpLanding = api;
+  if (window.DPBOOT) window.DPBOOT.ready = true; // загрузчик (js/boot.js): страница запустилась
 })();

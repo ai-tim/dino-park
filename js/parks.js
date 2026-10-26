@@ -34,4 +34,5 @@
   if (DP.music) DP.music.button('bl');
   $('#open-btn').onclick = openByCode;
   $('#open-pin').onkeydown = (e) => { if (e.key === 'Enter') openByCode(); };
-})();
+  if (window.DPBOOT) window.DPBOOT.ready = true; // загрузчик (js/boot.js): страница запустилась
+})().catch(function (e) { if (window.DPBOOT && window.DPBOOT.fail) window.DPBOOT.fail(e, 'запуск'); else throw e; });
